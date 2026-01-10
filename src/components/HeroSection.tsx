@@ -29,12 +29,11 @@ export const HeroSection = () => {
 
           {/* Subtitle */}
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-foreground mb-6 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            Criamos <span className="text-gradient">Sites</span> e{" "}
-            <span className="text-gradient">Chatbots Inteligentes</span>
+            A solução para <span className="text-gradient">turbinar suas vendas</span>
           </h1>
 
           <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            Transformamos ideias em soluções que multiplicam suas vendas
+            Sua empresa merece o melhor. Transformamos suas ideias em soluções que multiplicam suas vendas e tudo de forma automática!
           </p>
 
           {/* CTA Buttons */}
