@@ -21,7 +21,7 @@ export const Logo = ({ size = "md", showText = false }: LogoProps) => {
         className={`${sizeClasses[size]} w-auto object-contain`}
       />
       {showText && (
-        <span className="font-logo font-bold text-foreground">
+        <span className="font-logo font-bold text-white">
           tech<span className="text-primary">dev</span>
         </span>
       )}
@@ -34,7 +34,7 @@ export const LogoText = ({ className = "" }: { className?: string }) => {
     <div className={`flex flex-col items-center ${className}`}>
       <span className="text-3xl text-primary font-bold mb-1">&lt;/&gt;</span>
       <span className="font-logo text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight">
-        <span className="text-foreground">tech</span>
+        <span className="text-white">tech</span>
         <span className="text-primary">dev</span>
       </span>
     </div>
