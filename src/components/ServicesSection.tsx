@@ -75,12 +75,6 @@ export const ServicesSection = () => {
           <p className="text-muted-foreground mb-6">
             🚀 Não perca tempo! <span className="text-primary font-semibold">Garanta seu projeto agora!</span>
           </p>
-          <Button variant="whatsapp" size="xl" asChild>
-            <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
-              <MessageCircle className="mr-2 h-5 w-5" />
-              Solicitar Orçamento Grátis
-            </a>
-          </Button>
         </div>
       </div>
     </section>

@@ -76,11 +76,11 @@ export const Footer = () => {
               </li>
               <li>
                 <a
-                  href="mailto:contato@techdev.com"
+                  href="mailto:contato.techdev.br@gmail.com"
                   className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
                 >
                   <Mail className="h-4 w-4" />
-                  contato@techdev.com
+                  contato.techdev.br@gmail.com
                 </a>
               </li>
             </ul>

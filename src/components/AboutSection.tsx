@@ -8,23 +8,12 @@ export const AboutSection = () => {
       
       <div className="container px-4 relative z-10">
         <div className="max-w-4xl mx-auto text-center">
-          <span className="text-primary font-semibold text-sm uppercase tracking-wider">
-            Sobre nós
-          </span>
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mt-4 mb-6">
-            Sobre a <span className="text-gradient">TechDev</span>
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-6">
+            Somos a <span className="text-gradient">TechDev</span>
           </h2>
           
-          <p className="text-xl text-subtle-foreground mb-6 leading-relaxed">
-            Transformamos pequenos negócios em máquinas de vendas online.
-          </p>
-          
-          <p className="text-muted-foreground text-lg mb-6 leading-relaxed">
-            Somos a TechDev – especialistas em criar sites, chatbots e automações que trabalham 24h por dia para o seu negócio.
-          </p>
-          
           <p className="text-muted-foreground text-lg mb-10 leading-relaxed">
-            Nascemos com uma missão clara: levar tecnologia acessível para empreendedores que querem crescer sem complicação.
+            Transformamos pequenos negócios em máquinas de vendas online. Especialistas em criar sites, chatbots e automações que trabalham 24h por dia para o seu negócio. Nascemos com uma missão clara: levar tecnologia acessível para empreendedores que querem crescer sem complicação.
           </p>
 
           {/* Por que escolher */}
