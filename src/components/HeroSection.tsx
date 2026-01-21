@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { LogoText } from "@/components/Logo";
-import { ArrowRight, MessageCircle, Sparkles } from "lucide-react";
+import { MessageCircle, Sparkles } from "lucide-react";
 
 const WHATSAPP_LINK = "https://wa.me/5500000000000?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
 
@@ -32,22 +32,16 @@ export const HeroSection = () => {
             A solução para <span className="text-gradient">turbinar suas vendas</span>
           </h1>
 
-          <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            Sua empresa merece o melhor. Transformamos suas ideias em soluções que multiplicam suas vendas e tudo de forma automática!
+          <p className="text-lg md:text-xl text-subtle-foreground mb-10 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.4s" }}>
+            Melhoramos seu atendimento para você ganhar tempo, vender mais e atender melhor seus clientes.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in" style={{ animationDelay: "0.6s" }}>
+          {/* CTA Button */}
+          <div className="flex justify-center animate-fade-in" style={{ animationDelay: "0.6s" }}>
             <Button variant="hero" size="xl" asChild>
               <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
                 <MessageCircle className="mr-2 h-5 w-5" />
-                Quero Meu Site Agora!
-              </a>
-            </Button>
-            <Button variant="outline" size="xl" asChild>
-              <a href="#servicos">
-                Ver Serviços
-                <ArrowRight className="ml-2 h-5 w-5" />
+                Fale Conosco
               </a>
             </Button>
           </div>
