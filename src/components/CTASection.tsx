@@ -25,8 +25,7 @@ export const CTASection = () => {
           </h2>
           
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Não deixe para depois! Sua concorrência já está online. 
-            Entre em contato agora e receba uma proposta personalizada em minutos.
+            Não deixe para depois! Entre em contato agora e receba um <span className="text-primary font-semibold">orçamento gratuito</span> em minutos.
           </p>
 
           {/* Benefits */}
