@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Globe, Bot, Rocket, Palette, Zap, Shield, MessageCircle } from "lucide-react";
+import { Globe, Bot, Rocket, MessageCircle } from "lucide-react";
 
 const WHATSAPP_LINK = "https://wa.me/5500000000000?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20os%20serviços!";
 
@@ -8,7 +8,7 @@ const services = [
   {
     icon: Globe,
     title: "Sites Profissionais",
-    description: "Sites modernos, responsivos e otimizados para converter visitantes em clientes.",
+    description: "Sites modernos e otimizados para converter visitantes em clientes.",
     features: ["Design exclusivo", "SEO otimizado", "Alta velocidade"],
   },
   {
@@ -20,26 +20,8 @@ const services = [
   {
     icon: Rocket,
     title: "Landing Pages",
-    description: "Páginas focadas em conversão para suas campanhas de marketing.",
+    description: "Páginas focadas em atrair clientes para suas campanhas.",
     features: ["Alta conversão", "A/B Testing", "Carregamento rápido"],
-  },
-  {
-    icon: Palette,
-    title: "Design UI/UX",
-    description: "Interfaces bonitas e funcionais que encantam seus usuários.",
-    features: ["Design moderno", "Experiência fluida", "Acessibilidade"],
-  },
-  {
-    icon: Zap,
-    title: "Automação",
-    description: "Automatize processos repetitivos e ganhe tempo para o que importa.",
-    features: ["Fluxos automáticos", "Integrações", "Relatórios"],
-  },
-  {
-    icon: Shield,
-    title: "Manutenção",
-    description: "Suporte contínuo para manter seu site sempre atualizado e seguro.",
-    features: ["Atualizações", "Backup diário", "Monitoramento"],
   },
 ];
 
@@ -49,14 +31,11 @@ export const ServicesSection = () => {
       <div className="container px-4">
         {/* Section Header */}
         <div className="text-center mb-16">
-          <span className="text-primary font-semibold text-sm uppercase tracking-wider">
-            O que fazemos
-          </span>
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mt-4 mb-6">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-6">
             Nossos <span className="text-gradient">Serviços</span>
           </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Soluções completas para impulsionar seu negócio no mundo digital
+          <p className="text-xl md:text-2xl text-subtle-foreground font-medium max-w-2xl mx-auto">
+            Soluções para impulsionar <span className="text-gradient">de vez</span> o seu negócio!
           </p>
         </div>
 

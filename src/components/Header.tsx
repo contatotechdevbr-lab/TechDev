@@ -7,7 +7,6 @@ const navLinks = [
   { name: "Início", href: "#inicio" },
   { name: "Serviços", href: "#servicos" },
   { name: "Sobre", href: "#sobre" },
-  { name: "Planos", href: "#planos" },
   { name: "Contato", href: "#contato" },
 ];
 
@@ -22,8 +21,8 @@ export const Header = () => {
         <div className="flex items-center justify-between h-16">
           <Logo size="sm" />
           
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8">
+          {/* Desktop Navigation - Centered */}
+          <nav className="hidden md:flex items-center justify-center flex-1 gap-8">
             {navLinks.map((link) => (
               <a
                 key={link.name}
@@ -35,15 +34,8 @@ export const Header = () => {
             ))}
           </nav>
 
-          {/* CTA Button */}
-          <div className="hidden md:flex items-center gap-4">
-            <Button variant="whatsapp" size="lg" asChild>
-              <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
-                <MessageCircle className="mr-2 h-5 w-5" />
-                Fale Conosco
-              </a>
-            </Button>
-          </div>
+          {/* Spacer to balance the logo */}
+          <div className="hidden md:block w-[100px]"></div>
 
           {/* Mobile Menu Button */}
           <button
