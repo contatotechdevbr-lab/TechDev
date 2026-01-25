@@ -19,8 +19,11 @@ export const AboutSection = () => {
             <p className="text-muted-foreground text-lg leading-relaxed mb-6">
               Transformamos pequenos negócios em máquinas de vendas online. Especialistas em criar sites, chatbots e automações que trabalham 24h por dia para o seu negócio.
             </p>
-            <p className="text-muted-foreground text-lg leading-relaxed">
+            <p className="text-muted-foreground text-lg leading-relaxed mb-6">
               Nascemos com uma missão clara: levar tecnologia acessível para empreendedores que querem crescer sem complicação.
+            </p>
+            <p className="text-muted-foreground text-lg leading-relaxed">
+              Entendemos perfeitamente a correria do dia a dia: responder WhatsApp até de madrugada, organizar planilhas manualmente, perder clientes por demora no atendimento ou ter um site que ninguém encontra no Google.
             </p>
           </div>
 
