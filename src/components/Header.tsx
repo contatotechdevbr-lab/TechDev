@@ -10,7 +10,7 @@ const navLinks = [
   { name: "Contato", href: "#contato" },
 ];
 
-const WHATSAPP_LINK = "https://wa.me/5500000000000?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
+const WHATSAPP_LINK = "https://wa.me/5521987850455?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
