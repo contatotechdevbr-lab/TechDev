@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Check, Star, MessageCircle, Zap } from "lucide-react";
 
-const WHATSAPP_LINK = "https://wa.me/5500000000000?text=Olá!%20Tenho%20interesse%20no%20plano%20";
+const WHATSAPP_LINK = "https://wa.me/5521987850455?text=Olá!%20Tenho%20interesse%20no%20plano%20";
 
 const plans = [
   {
