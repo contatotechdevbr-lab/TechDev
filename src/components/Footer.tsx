@@ -5,8 +5,7 @@ const WHATSAPP_LINK = "https://wa.me/5521987850455";
 
 const socialLinks = [
   { icon: Instagram, href: "https://www.instagram.com/techdev.ofc/", label: "Instagram" },
-  { icon: Linkedin, href: "#", label: "LinkedIn" },
-];
+  ];
 
 const quickLinks = [
   { name: "Início", href: "#inicio" },
