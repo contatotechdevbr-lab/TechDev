@@ -4,7 +4,7 @@ import { Instagram, Linkedin, Mail, Phone } from "lucide-react";
 const WHATSAPP_LINK = "https://wa.me/5521987850455";
 
 const socialLinks = [
-  { icon: Instagram, href: "#", label: "Instagram" },
+  { icon: Instagram, href: "https://www.instagram.com/techdev.ofc/", label: "Instagram" },
   { icon: Linkedin, href: "#", label: "LinkedIn" },
 ];
 
