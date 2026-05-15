@@ -1,27 +1,27 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { Menu, X, MessageCircle } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { Menu, X, LayoutDashboard, LogIn } from "lucide-react";
 
 const navLinks = [
   { name: "Início", href: "#inicio" },
   { name: "Serviços", href: "#servicos" },
+  { name: "Planos", href: "#planos" },
   { name: "Sobre", href: "#sobre" },
-  { name: "Contato", href: "#contato" },
 ];
-
-const WHATSAPP_LINK = "https://wa.me/5521987850455?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user } = useAuth();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <Logo size="sm" />
-          
-          {/* Desktop Navigation - Centered */}
+
           <nav className="hidden md:flex items-center justify-center flex-1 gap-8">
             {navLinks.map((link) => (
               <a
@@ -34,10 +34,18 @@ export const Header = () => {
             ))}
           </nav>
 
-          {/* Spacer to balance the logo */}
-          <div className="hidden md:block w-[100px]"></div>
+          <div className="hidden md:flex items-center gap-2">
+            {user ? (
+              <Button variant="hero" size="sm" asChild>
+                <Link to="/dashboard"><LayoutDashboard className="h-4 w-4 mr-1" />Painel</Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/auth"><LogIn className="h-4 w-4 mr-1" />Entrar</Link>
+              </Button>
+            )}
+          </div>
 
-          {/* Mobile Menu Button */}
           <button
             className="md:hidden text-foreground"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -46,7 +54,6 @@ export const Header = () => {
           </button>
         </div>
 
-        {/* Mobile Navigation */}
         {isMenuOpen && (
           <div className="md:hidden py-4 border-t border-border animate-fade-in">
             <nav className="flex flex-col gap-4">
@@ -60,11 +67,8 @@ export const Header = () => {
                   {link.name}
                 </a>
               ))}
-              <Button variant="whatsapp" className="mt-4" asChild>
-                <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="mr-2 h-5 w-5" />
-                  Fale Conosco
-                </a>
+              <Button variant="hero" className="mt-2" asChild>
+                <Link to={user ? "/dashboard" : "/auth"}>{user ? "Painel" : "Entrar"}</Link>
               </Button>
             </nav>
           </div>
