@@ -1,16 +1,16 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { Menu, X, MessageCircle } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { Menu, X, LayoutDashboard, LogIn } from "lucide-react";
 
 const navLinks = [
   { name: "Início", href: "#inicio" },
   { name: "Serviços", href: "#servicos" },
+  { name: "Planos", href: "#planos" },
   { name: "Sobre", href: "#sobre" },
-  { name: "Contato", href: "#contato" },
 ];
-
-const WHATSAPP_LINK = "https://wa.me/5521987850455?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
