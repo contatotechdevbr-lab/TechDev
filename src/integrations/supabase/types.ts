@@ -14,16 +14,282 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      custom_plans: {
+        Row: {
+          active: boolean
+          base_plan_id: string | null
+          created_at: string
+          id: string
+          interval: Database["public"]["Enums"]["plan_interval"]
+          name: string
+          notes: string | null
+          price_cents: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          base_plan_id?: string | null
+          created_at?: string
+          id?: string
+          interval?: Database["public"]["Enums"]["plan_interval"]
+          name: string
+          notes?: string | null
+          price_cents: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          base_plan_id?: string | null
+          created_at?: string
+          id?: string
+          interval?: Database["public"]["Enums"]["plan_interval"]
+          name?: string
+          notes?: string | null
+          price_cents?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_plans_base_plan_id_fkey"
+            columns: ["base_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          id: string
+          installments: number
+          pagarme_charge_id: string | null
+          pagarme_order_id: string | null
+          paid_at: string | null
+          payment_method: string | null
+          status: Database["public"]["Enums"]["payment_status"]
+          subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          id?: string
+          installments?: number
+          pagarme_charge_id?: string | null
+          pagarme_order_id?: string | null
+          paid_at?: string | null
+          payment_method?: string | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          id?: string
+          installments?: number
+          pagarme_charge_id?: string | null
+          pagarme_order_id?: string | null
+          paid_at?: string | null
+          payment_method?: string | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          features: string[]
+          id: string
+          interval: Database["public"]["Enums"]["plan_interval"]
+          is_popular: boolean
+          max_installments: number
+          name: string
+          pagarme_plan_id: string | null
+          price_cents: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          features?: string[]
+          id?: string
+          interval?: Database["public"]["Enums"]["plan_interval"]
+          is_popular?: boolean
+          max_installments?: number
+          name: string
+          pagarme_plan_id?: string | null
+          price_cents: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          features?: string[]
+          id?: string
+          interval?: Database["public"]["Enums"]["plan_interval"]
+          is_popular?: boolean
+          max_installments?: number
+          name?: string
+          pagarme_plan_id?: string | null
+          price_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          cpf: string | null
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          pagarme_customer_id: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          cpf?: string | null
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+          pagarme_customer_id?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cpf?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          pagarme_customer_id?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          canceled_at: string | null
+          created_at: string
+          current_period_end: string | null
+          custom_plan_id: string | null
+          id: string
+          pagarme_subscription_id: string | null
+          plan_id: string | null
+          status: Database["public"]["Enums"]["subscription_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          canceled_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          custom_plan_id?: string | null
+          id?: string
+          pagarme_subscription_id?: string | null
+          plan_id?: string | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          canceled_at?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          custom_plan_id?: string | null
+          id?: string
+          pagarme_subscription_id?: string | null
+          plan_id?: string | null
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_custom_plan_id_fkey"
+            columns: ["custom_plan_id"]
+            isOneToOne: false
+            referencedRelation: "custom_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      payment_status: "pending" | "paid" | "failed" | "refunded" | "canceled"
+      plan_interval: "month" | "year" | "one_time"
+      subscription_status:
+        | "active"
+        | "pending"
+        | "past_due"
+        | "canceled"
+        | "suspended"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +416,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      payment_status: ["pending", "paid", "failed", "refunded", "canceled"],
+      plan_interval: ["month", "year", "one_time"],
+      subscription_status: [
+        "active",
+        "pending",
+        "past_due",
+        "canceled",
+        "suspended",
+      ],
+    },
   },
 } as const
