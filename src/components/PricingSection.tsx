@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Check, Star, Zap } from "lucide-react";
+import { CheckoutDialog, type CheckoutPlan } from "@/components/CheckoutDialog";
 
 type Plan = {
   id: string;
@@ -13,19 +13,27 @@ type Plan = {
   features: string[];
   is_popular: boolean;
   interval: string;
+  max_installments: number;
 };
 
 export const PricingSection = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [selected, setSelected] = useState<CheckoutPlan | null>(null);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     supabase
       .from("plans")
-      .select("id, name, description, price_cents, features, is_popular, interval")
+      .select("id, name, description, price_cents, features, is_popular, interval, max_installments")
       .eq("active", true)
       .order("price_cents", { ascending: true })
       .then(({ data }) => setPlans(data ?? []));
   }, []);
+
+  const openCheckout = (p: Plan) => {
+    setSelected({ id: p.id, name: p.name, price_cents: p.price_cents, features: p.features, max_installments: p.max_installments });
+    setOpen(true);
+  };
 
   const fmt = (c: number) => (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
 
@@ -81,8 +89,8 @@ export const PricingSection = () => {
                     </li>
                   ))}
                 </ul>
-                <Button variant={p.is_popular ? "hero" : "outline"} size="lg" className="w-full" asChild>
-                  <Link to={`/auth?plan=${p.id}`}>Assinar agora</Link>
+                <Button variant={p.is_popular ? "hero" : "outline"} size="lg" className="w-full" onClick={() => openCheckout(p)}>
+                  Assinar agora
                 </Button>
               </CardContent>
             </Card>
@@ -93,6 +101,7 @@ export const PricingSection = () => {
           ✅ Cancele a qualquer momento ✅ Suporte incluído ✅ Pagamento seguro
         </p>
       </div>
+      <CheckoutDialog plan={selected} open={open} onOpenChange={setOpen} />
     </section>
   );
 };
