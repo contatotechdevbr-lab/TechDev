@@ -89,8 +89,8 @@ export const PricingSection = () => {
                     </li>
                   ))}
                 </ul>
-                <Button variant={p.is_popular ? "hero" : "outline"} size="lg" className="w-full" asChild>
-                  <Link to={`/auth?plan=${p.id}`}>Assinar agora</Link>
+                <Button variant={p.is_popular ? "hero" : "outline"} size="lg" className="w-full" onClick={() => openCheckout(p)}>
+                  Assinar agora
                 </Button>
               </CardContent>
             </Card>
@@ -101,6 +101,7 @@ export const PricingSection = () => {
           ✅ Cancele a qualquer momento ✅ Suporte incluído ✅ Pagamento seguro
         </p>
       </div>
+      <CheckoutDialog plan={selected} open={open} onOpenChange={setOpen} />
     </section>
   );
 };
