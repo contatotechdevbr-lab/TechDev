@@ -125,7 +125,7 @@ const CustomerDetail = () => {
                     <Badge variant={s.status === "active" ? "default" : "secondary"}>{s.status}</Badge>
                     <div className="flex gap-2">
                       {s.status === "active" ? (
-                        <Button size="sm" variant="outline" onClick={() => updateSub(s.id, "paused")}>
+                        <Button size="sm" variant="outline" onClick={() => updateSub(s.id, "suspended")}>
                           <PauseCircle className="h-4 w-4 mr-1" /> Suspender
                         </Button>
                       ) : s.status !== "canceled" ? (
