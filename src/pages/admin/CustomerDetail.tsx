@@ -40,7 +40,8 @@ const CustomerDetail = () => {
   };
   useEffect(() => { load(); }, [id]);
 
-  const updateSub = async (subId: string, status: string) => {
+  type SubStatus = "active" | "canceled" | "past_due" | "pending" | "suspended";
+  const updateSub = async (subId: string, status: SubStatus) => {
     const { error } = await supabase.from("subscriptions").update({
       status,
       canceled_at: status === "canceled" ? new Date().toISOString() : null,
