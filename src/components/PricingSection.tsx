@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, ShieldCheck, Sparkles, Server, Globe, Headphones, Wrench, Eye, Lock, DatabaseBackup, ShieldAlert, MessageCircle, Palette, Gauge, Search, Plug, Smartphone, LayoutDashboard, Code2 } from "lucide-react";
 import { CheckoutDialog, type CheckoutPlan } from "@/components/CheckoutDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 const WHATSAPP_LINK =
   "https://wa.me/5521987850455?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20um%20or%C3%A7amento%20para%20um%20projeto%20personalizado.";
 
-// Plano mensal fixo da TechDev
+// Plano mensal fixo da TechDev (fallback enquanto o plano real carrega do banco)
 const MONTHLY_PLAN: CheckoutPlan = {
   id: "plano-mensal",
   name: "Plano Mensal",
@@ -48,6 +49,31 @@ const CUSTOM_FEATURES = [
 
 export const PricingSection = () => {
   const [open, setOpen] = useState(false);
+  const [plan, setPlan] = useState<CheckoutPlan>(MONTHLY_PLAN);
+
+  useEffect(() => {
+    let active = true;
+    supabase
+      .from("plans")
+      .select("id, name, price_cents, features, max_installments")
+      .eq("name", "Plano Mensal")
+      .eq("active", true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active && data) {
+          setPlan({
+            id: data.id,
+            name: data.name,
+            price_cents: data.price_cents,
+            features: data.features ?? MONTHLY_PLAN.features,
+            max_installments: data.max_installments ?? 1,
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <section id="planos" className="relative overflow-hidden">
@@ -156,7 +182,7 @@ export const PricingSection = () => {
         </div>
       </div>
 
-      <CheckoutDialog plan={MONTHLY_PLAN} open={open} onOpenChange={setOpen} />
+      <CheckoutDialog plan={plan} open={open} onOpenChange={setOpen} />
     </section>
   );
 };
