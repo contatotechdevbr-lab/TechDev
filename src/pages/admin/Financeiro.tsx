@@ -32,7 +32,7 @@ const chartTooltip = {
 };
 
 // Gastos de exemplo para cálculo de lucro estimado.
-const gastosMensaisCents = 1820000;
+const gastosMensaisCents = 182000;
 
 const Financeiro = () => {
   const [search, setSearch] = useState("");
