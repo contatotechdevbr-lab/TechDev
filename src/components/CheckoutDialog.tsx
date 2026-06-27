@@ -16,6 +16,8 @@ export type CheckoutPlan = {
   price_cents: number;
   features: string[];
   max_installments: number;
+  description?: string;
+  is_popular?: boolean;
 };
 
 type Props = {
