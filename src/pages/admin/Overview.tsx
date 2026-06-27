@@ -1,84 +1,218 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { DollarSign, TrendingUp, Users, Globe, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CreditCard, TrendingUp, Activity } from "lucide-react";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { StatCard } from "@/components/admin/StatCard";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import {
+  clientes,
+  sites,
+  assinaturas,
+  pagamentos,
+  faturamentoMensal,
+  crescimentoClientes,
+  distribuicaoPlanos,
+  statusProjetos,
+  fmtBRL,
+  fmtData,
+  clienteById,
+} from "@/lib/mock-data";
 
-const fmt = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const chartTooltip = {
+  contentStyle: {
+    background: "hsl(220 18% 10%)",
+    border: "1px solid hsl(220 15% 20%)",
+    borderRadius: "0.5rem",
+    fontSize: "12px",
+    color: "hsl(210 20% 95%)",
+  },
+};
 
 const Overview = () => {
-  const [stats, setStats] = useState({ total: 0, active: 0, mrr: 0, revenue: 0 });
-  const [recent, setRecent] = useState<any[]>([]);
+  const faturamentoTotal = pagamentos.filter((p) => p.status === "pago").reduce((a, p) => a + p.valorCents, 0);
+  const mrr = assinaturas.filter((a) => a.status === "ativa").reduce((a, s) => a + s.valorCents, 0);
+  const clientesAtivos = clientes.filter((c) => c.status === "ativo").length;
+  const sitesPublicados = sites.filter((s) => s.status === "ativo").length;
+  const assinaturasAtivas = assinaturas.filter((a) => a.status === "ativa").length;
 
-  useEffect(() => {
-    (async () => {
-      const { count: total } = await supabase.from("profiles").select("*", { count: "exact", head: true });
-      const { data: subs } = await supabase
-        .from("subscriptions")
-        .select("status, plans(price_cents), custom_plans(price_cents)")
-        .eq("status", "active");
-      const active = subs?.length ?? 0;
-      const mrr = (subs ?? []).reduce(
-        (a: number, s: any) => a + (s.plans?.price_cents ?? s.custom_plans?.price_cents ?? 0),
-        0
-      );
-      const { data: paid } = await supabase.from("payments").select("amount_cents").eq("status", "paid");
-      const revenue = (paid ?? []).reduce((a, p) => a + p.amount_cents, 0);
-      setStats({ total: total ?? 0, active, mrr, revenue });
+  const proximosPagamentos = [...clientes]
+    .filter((c) => c.status !== "inativo")
+    .sort((a, b) => +new Date(a.proximoPagamento) - +new Date(b.proximoPagamento))
+    .slice(0, 5);
 
-      const { data: r } = await supabase
-        .from("payments")
-        .select("id, amount_cents, status, created_at, user_id")
-        .order("created_at", { ascending: false })
-        .limit(8);
-      setRecent(r ?? []);
-    })();
-  }, []);
-
-  const cards = [
-    { label: "Clientes", value: stats.total.toString(), icon: Users },
-    { label: "Assinaturas ativas", value: stats.active.toString(), icon: Activity },
-    { label: "MRR (Receita mensal)", value: fmt(stats.mrr), icon: TrendingUp },
-    { label: "Receita total", value: fmt(stats.revenue), icon: CreditCard },
-  ];
+  const clientesPendentes = clientes.filter((c) => c.status === "pendente");
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map(({ label, value, icon: Icon }) => (
-          <Card key={label}>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
-              <Icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{value}</div>
-            </CardContent>
-          </Card>
-        ))}
+      <PageHeader
+        title="Dashboard"
+        description="Visão geral das operações da TechDev em tempo real."
+      />
+
+      {/* Cards principais */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <StatCard label="Faturamento total" value={fmtBRL(faturamentoTotal)} icon={DollarSign} trend={{ value: "+11%", positive: true }} hint="vs. mês anterior" />
+        <StatCard label="MRR" value={fmtBRL(mrr)} icon={TrendingUp} trend={{ value: "+8%", positive: true }} hint="recorrente" />
+        <StatCard label="Clientes ativos" value={String(clientesAtivos)} icon={Users} trend={{ value: "+3", positive: true }} hint="este mês" />
+        <StatCard label="Sites publicados" value={String(sitesPublicados)} icon={Globe} hint={`${sites.length} no total`} />
+        <StatCard label="Assinaturas ativas" value={String(assinaturasAtivas)} icon={RefreshCw} trend={{ value: "+5%", positive: true }} hint="ativas" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Pagamentos recentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem pagamentos ainda.</p>
-          ) : (
-            <div className="divide-y divide-border">
-              {recent.map((p) => (
-                <div key={p.id} className="flex items-center justify-between py-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {new Date(p.created_at).toLocaleString("pt-BR")}
-                  </span>
-                  <span className="font-medium">{fmt(p.amount_cents)}</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-secondary">{p.status}</span>
+      {/* Gráficos principais */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Evolução do faturamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={faturamentoMensal} margin={{ left: -10, right: 8 }}>
+                <defs>
+                  <linearGradient id="fat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(205 85% 55%)" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="hsl(205 85% 55%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
+                <XAxis dataKey="mes" stroke="hsl(215 15% 55%)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(215 15% 55%)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                <Tooltip {...chartTooltip} formatter={(v: number) => [fmtBRL(v * 100), "Faturamento"]} />
+                <Area type="monotone" dataKey="valor" stroke="hsl(205 85% 55%)" strokeWidth={2} fill="url(#fat)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Distribuição dos planos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie data={distribuicaoPlanos} dataKey="quantidade" nameKey="plano" innerRadius={55} outerRadius={90} paddingAngle={3}>
+                  {distribuicaoPlanos.map((d) => (
+                    <Cell key={d.plano} fill={`hsl(${d.cor})`} stroke="hsl(220 18% 10%)" strokeWidth={2} />
+                  ))}
+                </Pie>
+                <Tooltip {...chartTooltip} formatter={(v: number, n) => [`${v} clientes`, n]} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap justify-center gap-3">
+              {distribuicaoPlanos.map((d) => (
+                <div key={d.plano} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: `hsl(${d.cor})` }} />
+                  {d.plano}
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Crescimento de clientes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={crescimentoClientes} margin={{ left: -20, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" />
+                <XAxis dataKey="mes" stroke="hsl(215 15% 55%)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(215 15% 55%)" fontSize={12} tickLine={false} axisLine={false} />
+                <Tooltip {...chartTooltip} formatter={(v: number) => [`${v} clientes`, "Total"]} />
+                <Line type="monotone" dataKey="clientes" stroke="hsl(152 60% 50%)" strokeWidth={2} dot={{ r: 3, fill: "hsl(152 60% 50%)" }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Status dos projetos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={statusProjetos} margin={{ left: -20, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 20%)" vertical={false} />
+                <XAxis dataKey="status" stroke="hsl(215 15% 55%)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(215 15% 55%)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip {...chartTooltip} cursor={{ fill: "hsl(220 15% 18% / 0.5)" }} formatter={(v: number) => [`${v} projetos`, "Quantidade"]} />
+                <Bar dataKey="quantidade" fill="hsl(205 85% 55%)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Listas inferiores */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Próximos pagamentos</CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y divide-border">
+            {proximosPagamentos.map((c) => (
+              <div key={c.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium">{c.empresa}</p>
+                  <p className="text-xs text-muted-foreground">{c.plano} · vence {fmtData(c.proximoPagamento)}</p>
+                </div>
+                <span className="text-sm font-semibold">{fmtBRL(c.valorMensalCents)}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Clientes pendentes</CardTitle>
+          </CardHeader>
+          <CardContent className="divide-y divide-border">
+            {clientesPendentes.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">Nenhum cliente pendente.</p>
+            ) : (
+              clientesPendentes.map((c) => (
+                <div key={c.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium">{c.nome}</p>
+                    <p className="text-xs text-muted-foreground">{c.empresa}</p>
+                  </div>
+                  <StatusBadge status={c.status} />
+                </div>
+              ))
+            )}
+            {pagamentos.filter((p) => p.status !== "pago").map((p) => {
+              const c = clienteById(p.clienteId);
+              return (
+                <div key={p.id} className="flex items-center justify-between py-2.5 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium">{c?.empresa}</p>
+                    <p className="text-xs text-muted-foreground">{p.plano} · {fmtData(p.data)}</p>
+                  </div>
+                  <StatusBadge status={p.status} />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

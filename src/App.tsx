@@ -13,6 +13,8 @@ import Overview from "./pages/admin/Overview";
 import Customers from "./pages/admin/Customers";
 import CustomerDetail from "./pages/admin/CustomerDetail";
 import Plans from "./pages/admin/Plans";
+import Sites from "./pages/admin/Sites";
+import ComingSoon from "./pages/admin/ComingSoon";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +35,14 @@ const App = () => (
               <Route path="clientes" element={<Customers />} />
               <Route path="clientes/:id" element={<CustomerDetail />} />
               <Route path="planos" element={<Plans />} />
+              <Route path="sites" element={<Sites />} />
+              <Route path="assinaturas" element={<ComingSoon title="Assinaturas" />} />
+              <Route path="projetos" element={<ComingSoon title="Projetos" />} />
+              <Route path="financeiro" element={<ComingSoon title="Financeiro" />} />
+              <Route path="relatorios" element={<ComingSoon title="Relatórios" />} />
+              <Route path="usuarios" element={<ComingSoon title="Usuários administrativos" />} />
+              <Route path="configuracoes" element={<ComingSoon title="Configurações" />} />
+              <Route path="perfil" element={<ComingSoon title="Perfil do CEO" />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

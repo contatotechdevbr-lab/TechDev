@@ -1,188 +1,286 @@
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Ban, Loader2, PauseCircle, PlayCircle, Plus } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  ArrowLeft,
+  Pencil,
+  Mail,
+  Phone,
+  Calendar,
+  Globe,
+  FileText,
+  Download,
+  ExternalLink,
+} from "lucide-react";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { StatCard } from "@/components/admin/StatCard";
+import { ClienteFormDialog } from "@/components/admin/ClienteFormDialog";
+import { useClientes, clientesStore } from "@/lib/clientes-store";
+import { pagamentos, siteById, fmtBRL, fmtData } from "@/lib/mock-data";
+import { DollarSign, Package } from "lucide-react";
 
-const fmt = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const documentosExemplo = [
+  { nome: "Contrato de prestação de serviços.pdf", tamanho: "248 KB" },
+  { nome: "Briefing do projeto.pdf", tamanho: "1.2 MB" },
+  { nome: "Nota fiscal - Junho.pdf", tamanho: "96 KB" },
+];
+
+const alteracoesExemplo = [
+  { data: "2026-06-20", texto: "Plano alterado para Profissional" },
+  { data: "2026-05-12", texto: "Atualização de design da home" },
+  { data: "2026-03-02", texto: "Cliente cadastrado no sistema" },
+];
 
 const CustomerDetail = () => {
   const { id } = useParams();
-  const [profile, setProfile] = useState<any>(null);
-  const [subs, setSubs] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [customPlanOpen, setCustomPlanOpen] = useState(false);
-  const [cpForm, setCpForm] = useState({ name: "", price_reais: "97.00", notes: "" });
-  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  useClientes(); // re-render ao editar
+  const cliente = clientesStore.getById(id);
+  const [editOpen, setEditOpen] = useState(false);
 
-  const load = async () => {
-    if (!id) return;
-    const { data: p } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle();
-    setProfile(p);
-    const { data: s } = await supabase
-      .from("subscriptions")
-      .select("*, plans(name, price_cents), custom_plans(name, price_cents)")
-      .eq("user_id", id)
-      .order("created_at", { ascending: false });
-    setSubs(s ?? []);
-    const { data: pay } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("user_id", id)
-      .order("created_at", { ascending: false });
-    setPayments(pay ?? []);
-  };
-  useEffect(() => { load(); }, [id]);
+  if (!cliente) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/admin/clientes">
+            <ArrowLeft className="mr-1 h-4 w-4" /> Voltar
+          </Link>
+        </Button>
+        <p className="text-muted-foreground">Cliente não encontrado.</p>
+      </div>
+    );
+  }
 
-  type SubStatus = "active" | "canceled" | "past_due" | "pending" | "suspended";
-  const updateSub = async (subId: string, status: SubStatus) => {
-    const { error } = await supabase.from("subscriptions").update({
-      status,
-      canceled_at: status === "canceled" ? new Date().toISOString() : null,
-    }).eq("id", subId);
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else { toast({ title: "Atualizado" }); load(); }
-  };
-
-  const createCustomPlan = async () => {
-    if (!id || !cpForm.name.trim()) {
-      toast({ title: "Nome obrigatório", variant: "destructive" });
-      return;
-    }
-    setBusy(true);
-    const price_cents = Math.round(parseFloat(cpForm.price_reais.replace(",", ".")) * 100);
-    const { data: cp, error } = await supabase
-      .from("custom_plans")
-      .insert({ user_id: id, name: cpForm.name.trim(), price_cents, notes: cpForm.notes || null })
-      .select()
-      .single();
-    if (error) { setBusy(false); toast({ title: "Erro", description: error.message, variant: "destructive" }); return; }
-    const { error: sErr } = await supabase
-      .from("subscriptions")
-      .insert({ user_id: id, custom_plan_id: cp.id, status: "pending" });
-    setBusy(false);
-    if (sErr) toast({ title: "Erro", description: sErr.message, variant: "destructive" });
-    else {
-      toast({ title: "Plano personalizado criado", description: "Assinatura pendente — será ativada após cobrança." });
-      setCustomPlanOpen(false);
-      setCpForm({ name: "", price_reais: "97.00", notes: "" });
-      load();
-    }
-  };
-
-  if (!profile) return <p className="text-muted-foreground">Carregando...</p>;
+  const site = siteById(cliente.siteId);
+  const pagamentosCliente = pagamentos.filter((p) => p.clienteId === cliente.id);
+  const totalPago = pagamentosCliente
+    .filter((p) => p.status === "pago")
+    .reduce((a, p) => a + p.valorCents, 0);
+  const iniciais = cliente.nome.split(" ").map((n) => n[0]).slice(0, 2).join("");
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" asChild>
-        <Link to="/admin/clientes"><ArrowLeft className="h-4 w-4 mr-1" /> Voltar</Link>
+      <Button variant="ghost" size="sm" className="-ml-2" onClick={() => navigate("/admin/clientes")}>
+        <ArrowLeft className="mr-1 h-4 w-4" /> Voltar para clientes
       </Button>
 
+      <PageHeader
+        title={cliente.nome}
+        description={cliente.empresa}
+        actions={
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Pencil className="mr-1.5 h-4 w-4" /> Editar
+          </Button>
+        }
+      />
+
+      {/* Resumo */}
       <Card>
-        <CardHeader>
-          <CardTitle>{profile.full_name ?? profile.email}</CardTitle>
-          <CardDescription>{profile.email}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div><div className="text-muted-foreground">CPF</div><div>{profile.cpf ?? "—"}</div></div>
-          <div><div className="text-muted-foreground">Telefone</div><div>{profile.phone ?? "—"}</div></div>
-          <div><div className="text-muted-foreground">Cadastro</div><div>{new Date(profile.created_at).toLocaleDateString("pt-BR")}</div></div>
+        <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
+          <Avatar className="h-16 w-16">
+            <AvatarFallback
+              className="text-lg font-semibold"
+              style={{ background: `hsl(${cliente.avatarCor} / 0.15)`, color: `hsl(${cliente.avatarCor})` }}
+            >
+              {iniciais}
+            </AvatarFallback>
+          </Avatar>
+          <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <span className="truncate">{cliente.email}</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Phone className="h-4 w-4 text-muted-foreground" />
+              {cliente.telefone}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              Desde {fmtData(cliente.contratacao)}
+            </div>
+            <div>
+              <StatusBadge status={cliente.status} />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Assinaturas</CardTitle>
-            <CardDescription>Ações: suspender, reativar, cancelar</CardDescription>
-          </div>
-          <Button size="sm" variant="hero" onClick={() => setCustomPlanOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Plano personalizado
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {subs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem assinaturas.</p>
-          ) : (
-            <div className="space-y-3">
-              {subs.map((s) => {
-                const plan = s.plans || s.custom_plans;
-                const isCustom = !!s.custom_plans;
-                return (
-                  <div key={s.id} className="flex flex-wrap items-center justify-between gap-3 p-4 border border-border rounded-lg">
-                    <div>
-                      <div className="font-semibold flex items-center gap-2">
-                        {plan?.name ?? "—"} {isCustom && <Badge variant="secondary">Personalizado</Badge>}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Plano atual" value={cliente.plano} icon={Package} hint={`${fmtBRL(cliente.valorMensalCents)}/mês`} />
+        <StatCard label="Total pago" value={fmtBRL(totalPago)} icon={DollarSign} hint={`${pagamentosCliente.length} pagamentos`} />
+        <StatCard label="Próximo pagamento" value={fmtData(cliente.proximoPagamento)} icon={Calendar} />
+      </div>
+
+      <Tabs defaultValue="pagamentos">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="pagamentos">Pagamentos</TabsTrigger>
+          <TabsTrigger value="site">Site</TabsTrigger>
+          <TabsTrigger value="alteracoes">Alterações</TabsTrigger>
+          <TabsTrigger value="observacoes">Observações</TabsTrigger>
+          <TabsTrigger value="documentos">Documentos</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pagamentos" className="mt-4">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Plano</TableHead>
+                    <TableHead>Método</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagamentosCliente.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                        Sem pagamentos registrados.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    pagamentosCliente.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell>{fmtData(p.data)}</TableCell>
+                        <TableCell>{p.plano}</TableCell>
+                        <TableCell className="text-muted-foreground">{p.metodo}</TableCell>
+                        <TableCell className="font-medium">{fmtBRL(p.valorCents)}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={p.status} />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="site" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Site contratado</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {site ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <Globe className="h-5 w-5 text-primary" />
                       </div>
-                      <div className="text-sm text-muted-foreground">{plan ? fmt(plan.price_cents) + "/mês" : ""}</div>
+                      <div>
+                        <p className="font-medium">{site.nome}</p>
+                        <p className="text-sm text-muted-foreground">{site.dominio}</p>
+                      </div>
                     </div>
-                    <Badge variant={s.status === "active" ? "default" : "secondary"}>{s.status}</Badge>
-                    <div className="flex gap-2">
-                      {s.status === "active" ? (
-                        <Button size="sm" variant="outline" onClick={() => updateSub(s.id, "suspended")}>
-                          <PauseCircle className="h-4 w-4 mr-1" /> Suspender
-                        </Button>
-                      ) : s.status !== "canceled" ? (
-                        <Button size="sm" variant="outline" onClick={() => updateSub(s.id, "active")}>
-                          <PlayCircle className="h-4 w-4 mr-1" /> Reativar
-                        </Button>
-                      ) : null}
-                      {s.status !== "canceled" && (
-                        <Button size="sm" variant="ghost" onClick={() => updateSub(s.id, "canceled")}>
-                          <Ban className="h-4 w-4 mr-1" /> Cancelar
-                        </Button>
-                      )}
+                    <StatusBadge status={site.status} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                    <div>
+                      <p className="text-muted-foreground">Tecnologia</p>
+                      <p className="font-medium">{site.tecnologia}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Criação</p>
+                      <p className="font-medium">{fmtData(site.criacao)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Última atualização</p>
+                      <p className="font-medium">{fmtData(site.ultimaAtualizacao)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Plano</p>
+                      <p className="font-medium">{site.plano}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={site.link} target="_blank" rel="noreferrer">
+                      <ExternalLink className="mr-1.5 h-4 w-4" /> Visitar site
+                    </a>
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum site vinculado a este cliente.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <Card>
-        <CardHeader><CardTitle>Histórico de pagamentos</CardTitle></CardHeader>
-        <CardContent>
-          {payments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem pagamentos.</p>
-          ) : (
-            <div className="divide-y divide-border">
-              {payments.map((p) => (
-                <div key={p.id} className="flex items-center justify-between py-2 text-sm">
-                  <span className="text-muted-foreground">{new Date(p.paid_at ?? p.created_at).toLocaleString("pt-BR")}</span>
-                  <span>{p.installments}x</span>
-                  <span className="font-medium">{fmt(p.amount_cents)}</span>
-                  <Badge variant={p.status === "paid" ? "default" : "secondary"}>{p.status}</Badge>
+        <TabsContent value="alteracoes" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Histórico de alterações</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {alteracoesExemplo.map((a, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-primary" />
+                      {i < alteracoesExemplo.length - 1 && <span className="w-px flex-1 bg-border" />}
+                    </div>
+                    <div className="pb-2">
+                      <p className="text-sm font-medium">{a.texto}</p>
+                      <p className="text-xs text-muted-foreground">{fmtData(a.data)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="observacoes" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Observações internas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                {cliente.observacoes || "Nenhuma observação registrada para este cliente."}
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="documentos" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Documentos</CardTitle>
+            </CardHeader>
+            <CardContent className="divide-y divide-border">
+              {documentosExemplo.map((d, i) => (
+                <div key={i} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{d.nome}</p>
+                      <p className="text-xs text-muted-foreground">{d.tamanho}</p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Download className="h-4 w-4" />
+                    <span className="sr-only">Baixar</span>
+                  </Button>
                 </div>
               ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-      <Dialog open={customPlanOpen} onOpenChange={setCustomPlanOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Novo plano personalizado</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Nome do plano</Label><Input value={cpForm.name} onChange={(e) => setCpForm({ ...cpForm, name: e.target.value })} placeholder="Ex: Plano Empresa João" /></div>
-            <div><Label>Valor mensal (R$)</Label><Input type="number" step="0.01" value={cpForm.price_reais} onChange={(e) => setCpForm({ ...cpForm, price_reais: e.target.value })} /></div>
-            <div><Label>Observações</Label><Input value={cpForm.notes} onChange={(e) => setCpForm({ ...cpForm, notes: e.target.value })} placeholder="Opcional" /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCustomPlanOpen(false)}>Cancelar</Button>
-            <Button variant="hero" onClick={createCustomPlan} disabled={busy}>
-              {busy && <Loader2 className="h-4 w-4 animate-spin mr-1" />} Criar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClienteFormDialog open={editOpen} onOpenChange={setEditOpen} cliente={cliente} />
     </div>
   );
 };
