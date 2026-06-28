@@ -127,6 +127,13 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        // Em desenvolvimento, mostra a mensagem real da API e loga o diagnóstico completo.
+        if (import.meta.env.DEV) {
+          console.log("[v0] Erro do backend ao criar Order:", err);
+          const detail = err?.detail ?? err?.error ?? "Falha ao processar o pagamento.";
+          const status = err?.debug?.httpStatus ? ` (HTTP ${err.debug.httpStatus})` : "";
+          throw new Error(`${detail}${status}`);
+        }
         throw new Error(err?.error ?? "Falha ao processar o pagamento.");
       }
 

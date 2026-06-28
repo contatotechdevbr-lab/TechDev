@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "node:crypto";
-import { createOrderClient } from "../_lib/mercadopago.js";
+import { createOrderClient, isSandbox } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
 
 /**
@@ -63,30 +63,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3) Cria a Order no Mercado Pago (com chave de idempotência)
+    const orderBody = {
+      type: "online" as const,
+      total_amount: amount,
+      external_reference: externalReference,
+      processing_mode: "automatic" as const,
+      payer: {
+        email: payer.email,
+        first_name: payer.firstName,
+        last_name: payer.lastName,
+        identification: payer.identification, // { type: "CPF", number }
+      },
+      transactions: {
+        payments: [
+          {
+            amount,
+            payment_method: paymentMethod,
+          },
+        ],
+      },
+    };
+
+    // Log do payload (mascara dados sensíveis: e-mail, CPF e token do cartão)
+    const safeBody = JSON.parse(JSON.stringify(orderBody)) as Record<string, any>;
+    if (safeBody?.payer?.email) safeBody.payer.email = "***@***";
+    if (safeBody?.payer?.identification?.number) safeBody.payer.identification.number = "***";
+    const safePaymentMethod = safeBody?.transactions?.payments?.[0]?.payment_method;
+    if (safePaymentMethod?.token) safePaymentMethod.token = "***";
+    console.log("[v0] MP create-order payload:", JSON.stringify(safeBody));
+    console.log("[v0] MP sandbox mode:", isSandbox());
+
     const orderClient = createOrderClient();
     const order = await orderClient.create({
-      body: {
-        type: "online",
-        total_amount: amount,
-        external_reference: externalReference,
-        processing_mode: "automatic",
-        payer: {
-          email: payer.email,
-          first_name: payer.firstName,
-          last_name: payer.lastName,
-          identification: payer.identification, // { type: "CPF", number }
-        },
-        transactions: {
-          payments: [
-            {
-              amount,
-              payment_method: paymentMethod,
-            },
-          ],
-        },
-      },
+      body: orderBody,
       requestOptions: { idempotencyKey: externalReference },
     });
+
+    console.log("[v0] MP create-order OK. status:", (order as any)?.status, "id:", (order as any)?.id);
 
     const orderAny = order as Record<string, any>;
     const payment = orderAny?.transactions?.payments?.[0] ?? {};
@@ -126,10 +139,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       pix,
     });
   } catch (err: any) {
-    console.log("[v0] Erro ao criar Order MP:", err?.message, err?.cause ?? "");
+    // O SDK do Mercado Pago anexa o status HTTP e o corpo de erro da API.
+    // Os nomes variam entre versões, então tentamos todas as variações conhecidas.
+    const httpStatus =
+      err?.statusCode ?? err?.status ?? err?.cause?.statusCode ?? err?.response?.status ?? null;
+
+    // Corpo de erro real da Orders API (pode vir em cause, cause.error, response.data...)
+    const apiError =
+      err?.cause?.error ??
+      err?.cause ??
+      err?.response?.data ??
+      err?.error ??
+      null;
+
+    // A Orders API costuma detalhar a validação num array de "errors"/"cause"
+    const validationDetails =
+      apiError?.errors ?? apiError?.cause ?? err?.cause?.errors ?? null;
+
+    console.log("[v0] === ERRO Orders API Mercado Pago ===");
+    console.log("[v0] mensagem da exceção:", err?.message ?? "(sem mensagem)");
+    console.log("[v0] status HTTP do Mercado Pago:", httpStatus ?? "(desconhecido)");
+    console.log("[v0] corpo completo do erro:", JSON.stringify(apiError, null, 2));
+    if (validationDetails) {
+      console.log("[v0] detalhes de validação:", JSON.stringify(validationDetails, null, 2));
+    }
+
+    // Mensagem legível extraída do corpo da API, quando disponível
+    const apiMessage =
+      apiError?.message ??
+      (Array.isArray(validationDetails) && validationDetails[0]?.description) ??
+      (Array.isArray(validationDetails) && validationDetails[0]?.message) ??
+      err?.message ??
+      "erro desconhecido";
+
     return res.status(500).json({
       error: "Não foi possível processar o pagamento.",
-      detail: err?.message ?? "erro desconhecido",
+      detail: apiMessage,
+      // Diagnóstico detalhado — exibido no frontend apenas em desenvolvimento/sandbox
+      debug: {
+        httpStatus,
+        message: err?.message ?? null,
+        apiError,
+        validationDetails,
+      },
     });
   }
 }
