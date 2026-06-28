@@ -27,6 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payer,
       card, // { token, installments, paymentMethodId } quando method === "card"
       deviceId, // Device ID gerado pelo MercadoPago.js V2 no frontend
+      address, // { city, state, zipCode } informado na contratação
     } = req.body ?? {};
 
     if (!planId || !method || !payer?.email) {
@@ -47,6 +48,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const amount = (plan.price_cents / 100).toFixed(2);
     const externalReference = randomUUID();
+
+    // 1.1) Busca a data REAL de cadastro do usuário (nunca usar valor fictício).
+    // É enviada em additional_info.payer.registration_date para análise antifraude.
+    let registrationDate: string | null = null;
+    if (userId) {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("created_at")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profile?.created_at) {
+        // Formato ISO 8601 conforme documentação do Mercado Pago.
+        registrationDate = new Date(profile.created_at).toISOString();
+      }
+    }
+
+    // Monta o additional_info (endereço de contratação + data de cadastro).
+    // Cada bloco só é incluído quando há dados reais disponíveis.
+    const additionalInfo: Record<string, any> = {};
+    if (registrationDate) {
+      additionalInfo.payer = { registration_date: registrationDate };
+    }
+    const zip = address?.zipCode ? String(address.zipCode).replace(/\D/g, "") : "";
+    if (address?.city && address?.state && zip) {
+      additionalInfo.shipments = {
+        receivers_address: {
+          city_name: String(address.city).trim(),
+          state_name: String(address.state).trim(),
+          zip_code: zip,
+        },
+      };
+    }
 
     // Gera um e-mail "@testuser.com" determinístico a partir do e-mail real.
     // É exigido APENAS pelo ambiente Sandbox do Mercado Pago e usado como
@@ -111,6 +144,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
         ],
       },
+      // Informações adicionais para qualidade/antifraude (endereço + data de cadastro).
+      ...(Object.keys(additionalInfo).length > 0 ? { additional_info: additionalInfo } : {}),
     };
 
     // Log do payload (mascara dados sensíveis: e-mail, CPF e token do cartão)

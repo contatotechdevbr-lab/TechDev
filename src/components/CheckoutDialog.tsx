@@ -43,6 +43,11 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
 
+  // Endereço de contratação (enviado ao Mercado Pago em additional_info)
+  const [city, setCity] = useState("");
+  const [uf, setUf] = useState("");
+  const [zipCode, setZipCode] = useState("");
+
   // Pré-carrega o SDK V2 e o script de segurança ao abrir o diálogo, para que o
   // Device ID (antifraude) já esteja coletado no momento do pagamento.
   useEffect(() => {
@@ -50,6 +55,24 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
       void preloadMercadoPago();
     }
   }, [open]);
+
+  // Ao abrir, pré-preenche CPF e endereço com os dados já salvos no perfil.
+  useEffect(() => {
+    if (!open || !user) return;
+    void (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("cpf, address_city, address_state, address_zip_code")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (data) {
+        if (data.cpf) setCpf((prev) => prev || data.cpf!);
+        if (data.address_city) setCity((prev) => prev || data.address_city!);
+        if (data.address_state) setUf((prev) => prev || data.address_state!);
+        if (data.address_zip_code) setZipCode((prev) => prev || data.address_zip_code!);
+      }
+    })();
+  }, [open, user]);
 
   if (!plan) return null;
 
@@ -85,10 +108,32 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
       return;
     }
 
+    if (!city.trim() || !uf.trim() || !zipCode.trim()) {
+      toast({
+        title: "Informe seu endereço",
+        description: "Cidade, estado (UF) e CEP são necessários para concluir a contratação.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      // Salva o CPF no perfil
-      await supabase.from("profiles").update({ cpf }).eq("id", user.id);
+      // Normaliza os campos de endereço
+      const cityValue = city.trim();
+      const ufValue = uf.trim().toUpperCase().slice(0, 2);
+      const zipValue = zipCode.replace(/\D/g, "");
+
+      // Salva CPF e endereço no perfil (reutilizados em contratações futuras)
+      await supabase
+        .from("profiles")
+        .update({
+          cpf,
+          address_city: cityValue,
+          address_state: ufValue,
+          address_zip_code: zipValue,
+        })
+        .eq("id", user.id);
 
       // Monta o payload do pagador
       const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");
@@ -136,6 +181,7 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
           payer,
           card: cardPayload,
           deviceId,
+          address: { city: cityValue, state: ufValue, zipCode: zipValue },
         }),
       });
 
@@ -245,6 +291,21 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
             <div className="space-y-2">
               <Label htmlFor="cpf">CPF</Label>
               <Input id="cpf" placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="city">Cidade</Label>
+                <Input id="city" placeholder="São Paulo" value={city} onChange={(e) => setCity(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="uf">Estado (UF)</Label>
+                <Input id="uf" placeholder="SP" maxLength={2} value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zip">CEP</Label>
+                <Input id="zip" placeholder="00000-000" value={zipCode} onChange={(e) => setZipCode(e.target.value)} />
+              </div>
             </div>
 
             {method === "card" && (

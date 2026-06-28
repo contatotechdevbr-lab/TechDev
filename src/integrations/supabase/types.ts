@@ -161,6 +161,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address_city: string | null
+          address_state: string | null
+          address_zip_code: string | null
           cpf: string | null
           created_at: string
           email: string
@@ -171,6 +174,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address_city?: string | null
+          address_state?: string | null
+          address_zip_code?: string | null
           cpf?: string | null
           created_at?: string
           email: string
@@ -181,6 +187,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address_city?: string | null
+          address_state?: string | null
+          address_zip_code?: string | null
           cpf?: string | null
           created_at?: string
           email?: string
