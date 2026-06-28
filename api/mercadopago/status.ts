@@ -10,7 +10,7 @@
  * - NUNCA retorna o Access Token.
  */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createPaymentMethodClient, isSandbox } from "../_lib/mercadopago";
+import { createPaymentMethodClient, isSandbox } from "../_lib/mercadopago.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {

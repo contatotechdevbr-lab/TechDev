@@ -13,10 +13,26 @@ import { loadMercadoPago } from "@mercadopago/sdk-js";
 
 type MercadoPagoInstance = {
   // tipos mínimos do SDK; os métodos completos vêm do objeto em runtime
-  createCardToken: (data: unknown) => Promise<unknown>;
-  getPaymentMethods: (data: unknown) => Promise<unknown>;
+  createCardToken: (data: unknown) => Promise<{ id: string }>;
+  getPaymentMethods: (data: unknown) => Promise<{
+    results: Array<{ id: string; payment_type_id: string }>;
+  }>;
   getIdentificationTypes: () => Promise<unknown>;
   bricks: () => unknown;
+};
+
+export type CardInput = {
+  cardNumber: string;
+  cardholderName: string;
+  expirationMonth: string;
+  expirationYear: string;
+  securityCode: string;
+  identificationNumber: string; // CPF
+};
+
+export type CardTokenResult = {
+  token: string;
+  paymentMethodId: string;
 };
 
 declare global {
@@ -57,4 +73,33 @@ export async function getMercadoPago(): Promise<MercadoPagoInstance> {
   }
 
   return instancePromise;
+}
+
+/**
+ * Tokeniza os dados do cartão no NAVEGADOR via SDK oficial.
+ * Os dados sensíveis do cartão NUNCA passam pelo nosso servidor: apenas o
+ * token gerado é enviado ao backend.
+ */
+export async function tokenizeCard(card: CardInput): Promise<CardTokenResult> {
+  const mp = await getMercadoPago();
+
+  // Descobre o payment_method_id (ex.: "visa", "master") pelo BIN do cartão
+  const bin = card.cardNumber.replace(/\s/g, "").slice(0, 6);
+  const methods = await mp.getPaymentMethods({ bin });
+  const paymentMethodId = methods?.results?.[0]?.id;
+  if (!paymentMethodId) {
+    throw new Error("Cartão não reconhecido. Verifique o número informado.");
+  }
+
+  const result = await mp.createCardToken({
+    cardNumber: card.cardNumber.replace(/\s/g, ""),
+    cardholderName: card.cardholderName,
+    cardExpirationMonth: card.expirationMonth,
+    cardExpirationYear: card.expirationYear,
+    securityCode: card.securityCode,
+    identificationType: "CPF",
+    identificationNumber: card.identificationNumber.replace(/\D/g, ""),
+  });
+
+  return { token: result.id, paymentMethodId };
 }
