@@ -47,21 +47,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amount = (plan.price_cents / 100).toFixed(2);
     const externalReference = randomUUID();
 
-    // E-mail do pagador enviado ao Mercado Pago.
-    // Em Sandbox, a API exige um e-mail terminado em "@testuser.com". Para não
-    // bloquear os testes, mapeamos o e-mail real para um @testuser.com
-    // determinístico (o mesmo cliente recebe sempre o mesmo e-mail de teste).
-    // Em PRODUÇÃO, o e-mail real do cliente é usado normalmente.
-    // O e-mail real continua salvo em payer_email no banco (passo 4).
-    let mpPayerEmail: string = payer.email;
-    if (isSandbox() && !/@testuser\.com$/i.test(payer.email)) {
-      const slug = String(payer.email)
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "")
-        .slice(0, 20);
-      mpPayerEmail = `test_user_${slug || "buyer"}@testuser.com`;
-      console.log("[v0] Sandbox: e-mail do pagador mapeado para formato de teste.");
-    }
+    // Gera um e-mail "@testuser.com" determinístico a partir do e-mail real.
+    // É exigido APENAS pelo ambiente Sandbox do Mercado Pago e usado como
+    // fallback automático quando a API recusa o e-mail real (ver retry no passo 3).
+    // Em PRODUÇÃO esse caso nunca ocorre, então o e-mail real é sempre usado.
+    const toSandboxEmail = (email: string): string => {
+      const slug = String(email).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
+      return `test_user_${slug || "buyer"}@testuser.com`;
+    };
 
     // 2) Monta o payment method conforme o tipo escolhido
     const paymentMethod =
@@ -85,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       external_reference: externalReference,
       processing_mode: "automatic" as const,
       payer: {
-        email: mpPayerEmail,
+        email: payer.email,
         first_name: payer.firstName,
         last_name: payer.lastName,
         identification: payer.identification, // { type: "CPF", number }
@@ -110,10 +103,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log("[v0] MP sandbox mode:", isSandbox());
 
     const orderClient = createOrderClient();
-    const order = await orderClient.create({
-      body: orderBody,
-      requestOptions: { idempotencyKey: externalReference },
-    });
+
+    // Detecta se um erro é a recusa específica do Sandbox por causa do e-mail.
+    const isSandboxEmailError = (e: any): boolean => {
+      const blob = JSON.stringify(e?.cause ?? e?.message ?? e ?? "");
+      return /invalid_email_for_sandbox/i.test(blob);
+    };
+
+    let order: unknown;
+    try {
+      order = await orderClient.create({
+        body: orderBody,
+        requestOptions: { idempotencyKey: externalReference },
+      });
+    } catch (e: any) {
+      // Fallback automático de Sandbox: se a API recusou o e-mail real por estar
+      // em ambiente de testes, refaz a chamada com um e-mail @testuser.com.
+      // Em produção esse erro não acontece, então o e-mail real é mantido.
+      if (isSandboxEmailError(e)) {
+        console.log("[v0] Sandbox detectado: refazendo Order com e-mail @testuser.com.");
+        orderBody.payer.email = toSandboxEmail(payer.email);
+        order = await orderClient.create({
+          body: orderBody,
+          requestOptions: { idempotencyKey: `${externalReference}-sbx` },
+        });
+      } else {
+        throw e;
+      }
+    }
 
     console.log("[v0] MP create-order OK. status:", (order as any)?.status, "id:", (order as any)?.id);
 
