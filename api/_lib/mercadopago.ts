@@ -48,13 +48,43 @@ export function getAccessToken(): string {
 }
 
 /**
+ * Identificadores do SDK Node oficial do Mercado Pago (mercadopago v3.1.0).
+ *
+ * Estes são os mesmos valores que o SDK injeta automaticamente em TODA
+ * requisição. Como fazemos a chamada via fetch direto (necessário para enviar
+ * o Device ID), reproduzimos esses headers manualmente para que o Mercado Pago
+ * atribua corretamente o tráfego ao SDK oficial (qualidade da integração).
+ */
+const MP_SDK_VERSION = "3.1.0";
+const MP_PRODUCT_ID = "bc32b6ntrpp001u8nhkg";
+
+/** User-Agent no mesmo formato do SDK oficial. */
+function getSdkUserAgent(): string {
+  const nodeVersion = process.versions?.node ?? "unknown";
+  const arch = process.arch ?? "unknown";
+  const platform = process.platform ?? "unknown";
+  return `MercadoPago Node.js SDK v${MP_SDK_VERSION} (node ${nodeVersion}-${arch}-${platform})`;
+}
+
+/** X-Tracking-Id no mesmo formato do SDK oficial. */
+function getSdkTrackingId(): string {
+  const nodeVersion = process.versions?.node ?? "0.0.0";
+  const major = nodeVersion.includes(".") ? nodeVersion.slice(0, nodeVersion.indexOf(".")) : nodeVersion;
+  return `platform:${major}|${nodeVersion},type:SDK${MP_SDK_VERSION},so;`;
+}
+
+/**
  * Cria uma Order chamando diretamente o endpoint REST /v1/orders.
  *
- * Usamos fetch direto (em vez do SDK) porque a Orders API exige headers que o
- * SDK Node não expõe via requestOptions:
+ * Usamos fetch direto (em vez do client do SDK) porque a Orders API exige o
+ * header `X-meli-session-id` (Device ID), que o SDK Node não expõe via
+ * requestOptions. Para não perder a atribuição da integração, replicamos aqui
+ * os headers de identificação que o SDK oficial enviaria:
+ *  - `User-Agent`, `X-Product-Id`, `X-Tracking-Id`.
+ *
+ * Demais headers:
  *  - `X-Idempotency-Key`: evita orders duplicadas.
- *  - `X-meli-session-id`: Device ID gerado pelo MercadoPago.js V2 no frontend,
- *    essencial para a análise antifraude e aprovação de pagamentos.
+ *  - `X-meli-session-id`: Device ID do MercadoPago.js V2 (antifraude/aprovação).
  *
  * A resposta é o mesmo JSON retornado pelo SDK, mantendo o parsing consistente.
  */
@@ -67,6 +97,10 @@ export async function createOrderViaApi(params: {
     Authorization: `Bearer ${getAccessToken()}`,
     "Content-Type": "application/json",
     "X-Idempotency-Key": params.idempotencyKey,
+    // Headers de identificação equivalentes aos do SDK oficial Node v3.1.0.
+    "User-Agent": getSdkUserAgent(),
+    "X-Product-Id": MP_PRODUCT_ID,
+    "X-Tracking-Id": getSdkTrackingId(),
   };
   // Device ID (prevenção a fraude) — só enviado quando o frontend o fornece.
   if (params.deviceId) {
