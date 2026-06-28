@@ -9,7 +9,7 @@ import { Check, Loader2, ShieldCheck, QrCode, CreditCard, Copy } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
-import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, getMercadoPago } from "@/lib/mercadopago";
+import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, preloadMercadoPago } from "@/lib/mercadopago";
 
 export type CheckoutPlan = {
   id: string;
@@ -43,13 +43,11 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
 
-  // Pré-inicializa o SDK do Mercado Pago ao abrir o diálogo, para que o
+  // Pré-carrega o SDK V2 e o script de segurança ao abrir o diálogo, para que o
   // Device ID (antifraude) já esteja coletado no momento do pagamento.
   useEffect(() => {
     if (open && isMercadoPagoConfigured()) {
-      getMercadoPago().catch(() => {
-        /* falha silenciosa: o checkout segue sem o device id */
-      });
+      void preloadMercadoPago();
     }
   }, [open]);
 

@@ -108,24 +108,89 @@ export async function tokenizeCard(card: CardInput): Promise<CardTokenResult> {
   return { token: result.id, paymentMethodId };
 }
 
+// URL oficial do script de segurança do Mercado Pago, responsável por coletar
+// o fingerprint do dispositivo e preencher a global `MP_DEVICE_SESSION_ID`.
+const SECURITY_SCRIPT_SRC = "https://www.mercadopago.com/v2/security.js";
+
+let securityScriptPromise: Promise<void> | null = null;
+
+/**
+ * Carrega (uma única vez) o script oficial `security.js` do Mercado Pago.
+ *
+ * Esse script faz parte do toolkit oficial do Mercado Pago e é o método
+ * documentado para gerar o Device ID. Não é uma implementação manual: apenas
+ * complementa o SDK V2 garantindo que `window.MP_DEVICE_SESSION_ID` seja
+ * preenchido (o pacote @mercadopago/sdk-js não embute essa coleta).
+ */
+function ensureSecurityScript(): Promise<void> {
+  if (typeof document === "undefined") return Promise.resolve();
+
+  if (!securityScriptPromise) {
+    securityScriptPromise = new Promise<void>((resolve) => {
+      // Evita duplicar o script caso já esteja presente.
+      if (document.querySelector(`script[src="${SECURITY_SCRIPT_SRC}"]`)) {
+        resolve();
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = SECURITY_SCRIPT_SRC;
+      script.setAttribute("view", "checkout");
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => resolve(); // não bloqueia o checkout se falhar
+      document.head.appendChild(script);
+    });
+  }
+
+  return securityScriptPromise;
+}
+
+/**
+ * Pré-carrega os recursos do Mercado Pago necessários ao checkout: o SDK V2
+ * (tokenização) e o script de segurança (Device ID). Deve ser chamado assim
+ * que a tela de checkout abre, dando tempo para o Device ID ser coletado.
+ */
+export async function preloadMercadoPago(): Promise<void> {
+  ensureSecurityScript();
+  try {
+    await getMercadoPago();
+  } catch {
+    /* falha silenciosa: o checkout segue e reporta o erro no pagamento */
+  }
+}
+
 /**
  * Obtém o Device ID (identificador do dispositivo para análise antifraude),
- * gerado pelo MercadoPago.js V2.
+ * gerado pelo MercadoPago.js V2 em conjunto com o script `security.js`.
  *
- * Estratégia (em ordem de preferência):
- *  1) Método oficial do SDK: `mp.deviceProfile().getDeviceId()`.
- *  2) Fallback para a variável global `window.MP_DEVICE_SESSION_ID`, que o SDK
- *     preenche automaticamente ao ser carregado.
+ * Estratégia:
+ *  1) Garante que o `security.js` foi carregado.
+ *  2) Tenta o método do SDK: `mp.deviceProfile().getDeviceId()`.
+ *  3) Faz polling da global `window.MP_DEVICE_SESSION_ID` por até ~3s, pois a
+ *     coleta do fingerprint é assíncrona.
  *
- * Retorna `undefined` se o SDK ainda não tiver coletado o identificador.
+ * Retorna `undefined` somente se o identificador não puder ser coletado.
  */
 export async function getDeviceId(): Promise<string | undefined> {
+  if (typeof window === "undefined") return undefined;
+
+  await ensureSecurityScript();
+
+  // Método do SDK, quando disponível.
   try {
     const mp = await getMercadoPago();
     const fromSdk = mp.deviceProfile?.()?.getDeviceId?.();
     if (fromSdk) return fromSdk;
   } catch {
-    // ignora e tenta o fallback global
+    // ignora e cai para o polling da global
   }
-  return typeof window !== "undefined" ? window.MP_DEVICE_SESSION_ID : undefined;
+
+  // Polling da global preenchida pelo security.js (coleta assíncrona).
+  const maxAttempts = 30; // ~3s (30 x 100ms)
+  for (let i = 0; i < maxAttempts; i++) {
+    if (window.MP_DEVICE_SESSION_ID) return window.MP_DEVICE_SESSION_ID;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  return window.MP_DEVICE_SESSION_ID;
 }
