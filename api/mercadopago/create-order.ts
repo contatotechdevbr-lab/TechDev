@@ -156,20 +156,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const validationDetails =
       apiError?.errors ?? apiError?.cause ?? err?.cause?.errors ?? null;
 
+    // Serializa o erro INTEIRO, incluindo propriedades não-enumeráveis (Error.message, etc.)
+    let fullError: Record<string, any> = {};
+    try {
+      if (err && typeof err === "object") {
+        for (const key of Object.getOwnPropertyNames(err)) {
+          fullError[key] = (err as any)[key];
+        }
+      } else {
+        fullError = { value: String(err) };
+      }
+    } catch {
+      fullError = { unserializable: String(err) };
+    }
+
     console.log("[v0] === ERRO Orders API Mercado Pago ===");
     console.log("[v0] mensagem da exceção:", err?.message ?? "(sem mensagem)");
     console.log("[v0] status HTTP do Mercado Pago:", httpStatus ?? "(desconhecido)");
-    console.log("[v0] corpo completo do erro:", JSON.stringify(apiError, null, 2));
+    console.log("[v0] erro completo (todas as props):", JSON.stringify(fullError, null, 2));
+    console.log("[v0] corpo de erro da API:", JSON.stringify(apiError, null, 2));
     if (validationDetails) {
       console.log("[v0] detalhes de validação:", JSON.stringify(validationDetails, null, 2));
     }
 
-    // Mensagem legível extraída do corpo da API, quando disponível
+    // Mensagem legível — usa || para não tratar string vazia/false como válido
+    const firstDetail = Array.isArray(validationDetails) ? validationDetails[0] : null;
     const apiMessage =
-      apiError?.message ??
-      (Array.isArray(validationDetails) && validationDetails[0]?.description) ??
-      (Array.isArray(validationDetails) && validationDetails[0]?.message) ??
-      err?.message ??
+      apiError?.message ||
+      firstDetail?.description ||
+      firstDetail?.message ||
+      err?.message ||
+      JSON.stringify(fullError) ||
       "erro desconhecido";
 
     return res.status(500).json({
@@ -181,6 +198,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: err?.message ?? null,
         apiError,
         validationDetails,
+        fullError,
       },
     });
   }
