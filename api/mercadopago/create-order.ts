@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "node:crypto";
-import { createOrderClient, isSandbox } from "../_lib/mercadopago.js";
+import { createOrderViaApi, isSandbox } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
 
 /**
@@ -26,6 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method, // "pix" | "card"
       payer,
       card, // { token, installments, paymentMethodId } quando method === "card"
+      deviceId, // Device ID gerado pelo MercadoPago.js V2 no frontend
     } = req.body ?? {};
 
     if (!planId || !method || !payer?.email) {
@@ -56,15 +57,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return `test_user_${slug || "buyer"}@testuser.com`;
     };
 
+    // Texto exibido na fatura do cartão do comprador (máx. 13 caracteres visíveis).
+    const STATEMENT_DESCRIPTOR = "TECHDEV";
+
     // 2) Monta o payment method conforme o tipo escolhido
     const paymentMethod =
       method === "pix"
-        ? { id: "pix", type: "bank_transfer" as const }
+        ? {
+            id: "pix",
+            type: "bank_transfer" as const,
+            statement_descriptor: STATEMENT_DESCRIPTOR,
+          }
         : {
             id: card?.paymentMethodId,
             type: "credit_card" as const,
             token: card?.token,
             installments: card?.installments ?? 1,
+            statement_descriptor: STATEMENT_DESCRIPTOR,
           };
 
     if (method === "card" && (!card?.token || !card?.paymentMethodId)) {
@@ -77,12 +86,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_amount: amount,
       external_reference: externalReference,
       processing_mode: "automatic" as const,
+      description: `Assinatura ${plan.name} - TechDev`,
       payer: {
         email: payer.email,
         first_name: payer.firstName,
         last_name: payer.lastName,
         identification: payer.identification, // { type: "CPF", number }
       },
+      // Itens do pedido: cada item com unit_price (preço unitário) e quantity.
+      items: [
+        {
+          title: plan.name,
+          unit_price: amount, // valor por unidade (string decimal), igual ao plano
+          quantity: 1,
+          category_id: "services",
+          description: `Assinatura ${plan.name} - TechDev`,
+        },
+      ],
       transactions: {
         payments: [
           {
@@ -100,39 +120,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const safePaymentMethod = safeBody?.transactions?.payments?.[0]?.payment_method;
     if (safePaymentMethod?.token) safePaymentMethod.token = "***";
     console.log("[v0] MP create-order payload:", JSON.stringify(safeBody));
-    console.log("[v0] MP sandbox mode:", isSandbox());
-
-    const orderClient = createOrderClient();
+    console.log("[v0] MP sandbox mode:", isSandbox(), "| deviceId presente:", Boolean(deviceId));
 
     // Detecta se um erro é a recusa específica do Sandbox por causa do e-mail.
-    const isSandboxEmailError = (e: any): boolean => {
-      const blob = JSON.stringify(e?.cause ?? e?.message ?? e ?? "");
+    const isSandboxEmailError = (data: any): boolean => {
+      const blob = JSON.stringify(data ?? "");
       return /invalid_email_for_sandbox/i.test(blob);
     };
 
-    let order: unknown;
+    // Cria a Order via REST /v1/orders, enviando o Device ID no header
+    // X-meli-session-id e o X-Idempotency-Key. Em caso de erro HTTP, lança uma
+    // exceção que carrega statusCode e cause (lida pelo catch principal).
+    const createOrder = async (idemKey: string) => {
+      const r = await createOrderViaApi({ body: orderBody, idempotencyKey: idemKey, deviceId });
+      if (!r.ok) {
+        const err: any = new Error(r.data?.message || "Falha ao criar a Order no Mercado Pago.");
+        err.statusCode = r.status;
+        err.cause = r.data;
+        throw err;
+      }
+      return r.data;
+    };
+
+    let order: any;
     try {
-      order = await orderClient.create({
-        body: orderBody,
-        requestOptions: { idempotencyKey: externalReference },
-      });
+      order = await createOrder(externalReference);
     } catch (e: any) {
       // Fallback automático de Sandbox: se a API recusou o e-mail real por estar
       // em ambiente de testes, refaz a chamada com um e-mail @testuser.com.
       // Em produção esse erro não acontece, então o e-mail real é mantido.
-      if (isSandboxEmailError(e)) {
+      if (isSandboxEmailError(e?.cause)) {
         console.log("[v0] Sandbox detectado: refazendo Order com e-mail @testuser.com.");
         orderBody.payer.email = toSandboxEmail(payer.email);
-        order = await orderClient.create({
-          body: orderBody,
-          requestOptions: { idempotencyKey: `${externalReference}-sbx` },
-        });
+        order = await createOrder(`${externalReference}-sbx`);
       } else {
         throw e;
       }
     }
 
-    console.log("[v0] MP create-order OK. status:", (order as any)?.status, "id:", (order as any)?.id);
+    console.log("[v0] MP create-order OK. status:", order?.status, "id:", order?.id);
 
     const orderAny = order as Record<string, any>;
     const payment = orderAny?.transactions?.payments?.[0] ?? {};

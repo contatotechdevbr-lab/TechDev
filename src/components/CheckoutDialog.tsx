@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Check, Loader2, ShieldCheck, QrCode, CreditCard, Copy } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
-import { tokenizeCard, isMercadoPagoConfigured } from "@/lib/mercadopago";
+import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, getMercadoPago } from "@/lib/mercadopago";
 
 export type CheckoutPlan = {
   id: string;
@@ -42,6 +42,16 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   const [cardName, setCardName] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
+
+  // Pré-inicializa o SDK do Mercado Pago ao abrir o diálogo, para que o
+  // Device ID (antifraude) já esteja coletado no momento do pagamento.
+  useEffect(() => {
+    if (open && isMercadoPagoConfigured()) {
+      getMercadoPago().catch(() => {
+        /* falha silenciosa: o checkout segue sem o device id */
+      });
+    }
+  }, [open]);
 
   if (!plan) return null;
 
@@ -112,6 +122,11 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
         cardPayload = { token, paymentMethodId, installments: 1 };
       }
 
+      // Device ID gerado pelo MercadoPago.js V2 (antifraude). Pode ser undefined
+      // se o SDK ainda não tiver coletado; nesse caso o backend simplesmente não
+      // envia o header X-meli-session-id.
+      const deviceId = await getDeviceId();
+
       // Chama o backend (Vercel Function) para criar a Order
       const res = await fetch("/api/mercadopago/create-order", {
         method: "POST",
@@ -122,6 +137,7 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
           method,
           payer,
           card: cardPayload,
+          deviceId,
         }),
       });
 

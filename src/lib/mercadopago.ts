@@ -19,6 +19,8 @@ type MercadoPagoInstance = {
   }>;
   getIdentificationTypes: () => Promise<unknown>;
   bricks: () => unknown;
+  // MercadoPago.js V2: perfil de dispositivo para gerar o Device ID (antifraude)
+  deviceProfile?: () => { getDeviceId?: () => string | undefined };
 };
 
 export type CardInput = {
@@ -41,6 +43,8 @@ declare global {
       publicKey: string,
       options?: { locale?: string },
     ) => MercadoPagoInstance;
+    // Variável global preenchida automaticamente pelo SDK V2 / security.js
+    MP_DEVICE_SESSION_ID?: string;
   }
 }
 
@@ -102,4 +106,26 @@ export async function tokenizeCard(card: CardInput): Promise<CardTokenResult> {
   });
 
   return { token: result.id, paymentMethodId };
+}
+
+/**
+ * Obtém o Device ID (identificador do dispositivo para análise antifraude),
+ * gerado pelo MercadoPago.js V2.
+ *
+ * Estratégia (em ordem de preferência):
+ *  1) Método oficial do SDK: `mp.deviceProfile().getDeviceId()`.
+ *  2) Fallback para a variável global `window.MP_DEVICE_SESSION_ID`, que o SDK
+ *     preenche automaticamente ao ser carregado.
+ *
+ * Retorna `undefined` se o SDK ainda não tiver coletado o identificador.
+ */
+export async function getDeviceId(): Promise<string | undefined> {
+  try {
+    const mp = await getMercadoPago();
+    const fromSdk = mp.deviceProfile?.()?.getDeviceId?.();
+    if (fromSdk) return fromSdk;
+  } catch {
+    // ignora e tenta o fallback global
+  }
+  return typeof window !== "undefined" ? window.MP_DEVICE_SESSION_ID : undefined;
 }
