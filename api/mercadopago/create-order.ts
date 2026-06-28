@@ -47,6 +47,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const amount = (plan.price_cents / 100).toFixed(2);
     const externalReference = randomUUID();
 
+    // E-mail do pagador enviado ao Mercado Pago.
+    // Em Sandbox, a API exige um e-mail terminado em "@testuser.com". Para não
+    // bloquear os testes, mapeamos o e-mail real para um @testuser.com
+    // determinístico (o mesmo cliente recebe sempre o mesmo e-mail de teste).
+    // Em PRODUÇÃO, o e-mail real do cliente é usado normalmente.
+    // O e-mail real continua salvo em payer_email no banco (passo 4).
+    let mpPayerEmail: string = payer.email;
+    if (isSandbox() && !/@testuser\.com$/i.test(payer.email)) {
+      const slug = String(payer.email)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "")
+        .slice(0, 20);
+      mpPayerEmail = `test_user_${slug || "buyer"}@testuser.com`;
+      console.log("[v0] Sandbox: e-mail do pagador mapeado para formato de teste.");
+    }
+
     // 2) Monta o payment method conforme o tipo escolhido
     const paymentMethod =
       method === "pix"
@@ -69,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       external_reference: externalReference,
       processing_mode: "automatic" as const,
       payer: {
-        email: payer.email,
+        email: mpPayerEmail,
         first_name: payer.firstName,
         last_name: payer.lastName,
         identification: payer.identification, // { type: "CPF", number }
