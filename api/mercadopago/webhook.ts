@@ -57,7 +57,9 @@ function isValidSignature(req: VercelRequest, dataId: string): boolean {
   const v1 = parts["v1"];
   if (!ts || !v1) return false;
 
-  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+  // Conforme a doc do Mercado Pago, o data.id alfanumérico entra em minúsculas no manifest.
+  const normalizedId = dataId.toLowerCase();
+  const manifest = `id:${normalizedId};request-id:${xRequestId};ts:${ts};`;
   const hmac = crypto.createHmac("sha256", secret).update(manifest).digest("hex");
 
   try {
