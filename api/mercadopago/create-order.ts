@@ -86,15 +86,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         : null;
 
-    // Gera um e-mail "@testuser.com" determinístico a partir do e-mail real.
-    // É exigido APENAS pelo ambiente Sandbox do Mercado Pago e usado como
-    // fallback automático quando a API recusa o e-mail real (ver retry no passo 3).
-    // Em PRODUÇÃO esse caso nunca ocorre, então o e-mail real é sempre usado.
-    const toSandboxEmail = (email: string): string => {
-      const slug = String(email).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
-      return `test_user_${slug || "buyer"}@testuser.com`;
-    };
-
     // Texto exibido na fatura do cartão do comprador (máx. 13 caracteres visíveis).
     const STATEMENT_DESCRIPTOR = "TECHDEV";
 
@@ -163,43 +154,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const safePaymentMethod = safeBody?.transactions?.payments?.[0]?.payment_method;
     if (safePaymentMethod?.token) safePaymentMethod.token = "***";
     console.log("[v0] MP create-order payload:", JSON.stringify(safeBody));
-    console.log("[v0] MP sandbox mode:", isSandbox(), "| deviceId presente:", Boolean(deviceId));
-
-    // Detecta se um erro é a recusa específica do Sandbox por causa do e-mail.
-    const isSandboxEmailError = (data: any): boolean => {
-      const blob = JSON.stringify(data ?? "");
-      return /invalid_email_for_sandbox/i.test(blob);
-    };
+    console.log("[v0] MP create-order: deviceId presente:", Boolean(deviceId));
 
     // Cria a Order via REST /v1/orders, enviando o Device ID no header
     // X-meli-session-id e o X-Idempotency-Key. Em caso de erro HTTP, lança uma
     // exceção que carrega statusCode e cause (lida pelo catch principal).
-    const createOrder = async (idemKey: string) => {
-      const r = await createOrderViaApi({ body: orderBody, idempotencyKey: idemKey, deviceId });
-      if (!r.ok) {
-        const err: any = new Error(r.data?.message || "Falha ao criar a Order no Mercado Pago.");
-        err.statusCode = r.status;
-        err.cause = r.data;
-        throw err;
-      }
-      return r.data;
-    };
-
-    let order: any;
-    try {
-      order = await createOrder(externalReference);
-    } catch (e: any) {
-      // Fallback automático de Sandbox: se a API recusou o e-mail real por estar
-      // em ambiente de testes, refaz a chamada com um e-mail @testuser.com.
-      // Em produção esse erro não acontece, então o e-mail real é mantido.
-      if (isSandboxEmailError(e?.cause)) {
-        console.log("[v0] Sandbox detectado: refazendo Order com e-mail @testuser.com.");
-        orderBody.payer.email = toSandboxEmail(payer.email);
-        order = await createOrder(`${externalReference}-sbx`);
-      } else {
-        throw e;
-      }
+    const r = await createOrderViaApi({
+      body: orderBody,
+      idempotencyKey: externalReference,
+      deviceId,
+    });
+    if (!r.ok) {
+      const err: any = new Error(r.data?.message || "Falha ao criar a Order no Mercado Pago.");
+      err.statusCode = r.status;
+      err.cause = r.data;
+      throw err;
     }
+    const order: any = r.data;
 
     console.log("[v0] MP create-order OK. status:", order?.status, "id:", order?.id);
 
@@ -291,17 +262,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       JSON.stringify(fullError) ||
       "erro desconhecido";
 
+    // Em PRODUÇÃO não expomos detalhes internos ao cliente (segurança):
+    // o diagnóstico completo fica apenas nos logs do servidor (acima).
+    // O bloco `debug` só é retornado quando as credenciais são de teste.
     return res.status(500).json({
       error: "Não foi possível processar o pagamento.",
-      detail: apiMessage,
-      // Diagnóstico detalhado — exibido no frontend apenas em desenvolvimento/sandbox
-      debug: {
-        httpStatus,
-        message: err?.message ?? null,
-        apiError,
-        validationDetails,
-        fullError,
-      },
+      detail: isSandbox() ? apiMessage : "Tente novamente ou utilize outro meio de pagamento.",
+      ...(isSandbox()
+        ? {
+            debug: {
+              httpStatus,
+              message: err?.message ?? null,
+              apiError,
+              validationDetails,
+              fullError,
+            },
+          }
+        : {}),
     });
   }
 }
