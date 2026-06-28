@@ -75,8 +75,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const body = req.body ?? {};
-    const topic: string = body.type ?? body.topic ?? "";
-    const dataId: string = String(body.data?.id ?? body.resource ?? "");
+    // O Mercado Pago envia os dados na query string (?type=payment&data.id=123)
+    // e também no corpo. Priorizamos a query, que é o que entra no manifesto
+    // da assinatura, com fallback para o corpo.
+    const queryDataId = (req.query["data.id"] ?? req.query["id"]) as string | undefined;
+    const queryTopic = (req.query["type"] ?? req.query["topic"]) as string | undefined;
+    const topic: string = String(queryTopic ?? body.type ?? body.topic ?? "");
+    const dataId: string = String(queryDataId ?? body.data?.id ?? body.resource ?? "");
 
     // Só tratamos notificações de pagamento
     if (!dataId || (topic && !topic.includes("payment"))) {
