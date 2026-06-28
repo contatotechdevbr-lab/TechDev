@@ -64,22 +64,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Monta o additional_info (endereço de contratação + data de cadastro).
-    // Cada bloco só é incluído quando há dados reais disponíveis.
+    // Monta os campos de qualidade conforme a Orders API (/v1/orders):
+    //  - Data de cadastro: additional_info usa a CHAVE PLANA "payer.registration_date"
+    //    (objeto aninhado payer.registration_date é recusado pela Orders API).
+    //  - Endereço de entrega: objeto tipado shipment.address { city, state, zip_code }
+    //    (additional_info.shipments.receivers_address do padrão antigo é recusado).
     const additionalInfo: Record<string, any> = {};
     if (registrationDate) {
-      additionalInfo.payer = { registration_date: registrationDate };
+      additionalInfo["payer.registration_date"] = registrationDate;
     }
+
     const zip = address?.zipCode ? String(address.zipCode).replace(/\D/g, "") : "";
-    if (address?.city && address?.state && zip) {
-      additionalInfo.shipments = {
-        receivers_address: {
-          city_name: String(address.city).trim(),
-          state_name: String(address.state).trim(),
-          zip_code: zip,
-        },
-      };
-    }
+    const shipment =
+      address?.city && address?.state && zip
+        ? {
+            address: {
+              city: String(address.city).trim(),
+              state: String(address.state).trim(),
+              zip_code: zip,
+            },
+          }
+        : null;
 
     // Gera um e-mail "@testuser.com" determinístico a partir do e-mail real.
     // É exigido APENAS pelo ambiente Sandbox do Mercado Pago e usado como
@@ -144,8 +149,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
         ],
       },
-      // Informações adicionais para qualidade/antifraude (endereço + data de cadastro).
+      // Informações de qualidade/antifraude:
+      //  - additional_info: data de cadastro do pagador (chave plana).
+      //  - shipment: endereço informado na contratação.
       ...(Object.keys(additionalInfo).length > 0 ? { additional_info: additionalInfo } : {}),
+      ...(shipment ? { shipment } : {}),
     };
 
     // Log do payload (mascara dados sensíveis: e-mail, CPF e token do cartão)
