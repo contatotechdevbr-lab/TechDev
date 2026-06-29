@@ -7,6 +7,9 @@ type AuthCtx = {
   session: Session | null;
   loading: boolean;
   isAdmin: boolean;
+  // true assim que a verificação de permissão (admin) foi concluída.
+  // Útil para decidir o redirecionamento correto sem "pular" para a rota errada.
+  roleLoaded: boolean;
   signOut: () => Promise<void>;
 };
 
@@ -15,6 +18,7 @@ const Ctx = createContext<AuthCtx>({
   session: null,
   loading: true,
   isAdmin: false,
+  roleLoaded: false,
   signOut: async () => {},
 });
 
@@ -23,25 +27,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   useEffect(() => {
+    // Consulta o papel do usuário e marca a verificação como concluída.
+    const resolveRole = (userId: string) => {
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin")
+        .maybeSingle()
+        .then(({ data }) => {
+          setIsAdmin(!!data);
+          setRoleLoaded(true);
+        });
+    };
+
     // 1. Listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
+        setRoleLoaded(false);
         // Defer role lookup to avoid deadlock
-        setTimeout(() => {
-          supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", s.user.id)
-            .eq("role", "admin")
-            .maybeSingle()
-            .then(({ data }) => setIsAdmin(!!data));
-        }, 0);
+        setTimeout(() => resolveRole(s.user.id), 0);
       } else {
         setIsAdmin(false);
+        setRoleLoaded(true);
       }
     });
 
@@ -51,13 +64,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(s?.user ?? null);
       setLoading(false);
       if (s?.user) {
-        supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", s.user.id)
-          .eq("role", "admin")
-          .maybeSingle()
-          .then(({ data }) => setIsAdmin(!!data));
+        resolveRole(s.user.id);
+      } else {
+        setRoleLoaded(true);
       }
     });
 
@@ -69,7 +78,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <Ctx.Provider value={{ user, session, loading, isAdmin, signOut }}>
+    <Ctx.Provider value={{ user, session, loading, isAdmin, roleLoaded, signOut }}>
       {children}
     </Ctx.Provider>
   );

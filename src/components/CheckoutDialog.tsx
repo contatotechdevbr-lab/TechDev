@@ -43,10 +43,16 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
 
-  // Endereço de contratação (enviado ao Mercado Pago em additional_info)
+  // Endereço de contratação (enviado ao Mercado Pago em additional_info).
+  // Rua, bairro, cidade e UF são preenchidos automaticamente pelo CEP (ViaCEP).
+  const [zipCode, setZipCode] = useState("");
+  const [street, setStreet] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [number, setNumber] = useState("");
   const [city, setCity] = useState("");
   const [uf, setUf] = useState("");
-  const [zipCode, setZipCode] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState("");
 
   // Pré-carrega o SDK V2 e o script de segurança ao abrir o diálogo, para que o
   // Device ID (antifraude) já esteja coletado no momento do pagamento.
@@ -73,6 +79,37 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
       }
     })();
   }, [open, user]);
+
+  // Aplica máscara 00000-000 enquanto o usuário digita o CEP.
+  const handleZipChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8);
+    const masked = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+    setZipCode(masked);
+    setCepError("");
+    if (digits.length === 8) void lookupCep(digits);
+  };
+
+  // Consulta o ViaCEP e preenche rua, bairro, cidade e UF automaticamente.
+  const lookupCep = async (digits: string) => {
+    setCepLoading(true);
+    setCepError("");
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (data?.erro) {
+        setCepError("CEP não encontrado. Verifique e tente novamente.");
+        return;
+      }
+      setStreet(data.logradouro ?? "");
+      setNeighborhood(data.bairro ?? "");
+      setCity(data.localidade ?? "");
+      setUf((data.uf ?? "").toUpperCase());
+    } catch {
+      setCepError("Não foi possível buscar o CEP. Preencha o endereço manualmente.");
+    } finally {
+      setCepLoading(false);
+    }
+  };
 
   if (!plan) return null;
 
@@ -295,16 +332,49 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2 col-span-2">
+                <Label htmlFor="zip">CEP</Label>
+                <div className="relative">
+                  <Input
+                    id="zip"
+                    placeholder="00000-000"
+                    inputMode="numeric"
+                    value={zipCode}
+                    onChange={(e) => handleZipChange(e.target.value)}
+                  />
+                  {cepLoading && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                {cepError ? (
+                  <p className="text-xs text-destructive">{cepError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Informe o CEP para preenchermos o endereço automaticamente.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="street">Rua</Label>
+                <Input id="street" placeholder="Preenchido pelo CEP" value={street} onChange={(e) => setStreet(e.target.value)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="number">Número</Label>
+                <Input id="number" placeholder="123" inputMode="numeric" value={number} onChange={(e) => setNumber(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="neighborhood">Bairro</Label>
+                <Input id="neighborhood" placeholder="Preenchido pelo CEP" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} />
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="city">Cidade</Label>
-                <Input id="city" placeholder="São Paulo" value={city} onChange={(e) => setCity(e.target.value)} />
+                <Input id="city" placeholder="Preenchido pelo CEP" value={city} onChange={(e) => setCity(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="uf">Estado (UF)</Label>
-                <Input id="uf" placeholder="SP" maxLength={2} value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="zip">CEP</Label>
-                <Input id="zip" placeholder="00000-000" value={zipCode} onChange={(e) => setZipCode(e.target.value)} />
+                <Input id="uf" placeholder="UF" maxLength={2} value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} />
               </div>
             </div>
 

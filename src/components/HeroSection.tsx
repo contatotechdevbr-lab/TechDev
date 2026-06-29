@@ -46,19 +46,19 @@ export const HeroSection = () => {
             </Button>
           </div>
 
-          {/* Trust Badges */}
+          {/* Diferenciais (promessas de serviço, sem métricas fictícias) */}
           <div className="mt-16 flex flex-wrap justify-center gap-8 text-muted-foreground animate-fade-in" style={{ animationDelay: "0.8s" }}>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-primary">100+</span>
-              <span className="text-sm">Clientes<br />Satisfeitos</span>
-            </div>
             <div className="flex items-center gap-2">
               <span className="text-3xl font-bold text-primary">24/7</span>
               <span className="text-sm">Suporte<br />Dedicado</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-primary">5★</span>
-              <span className="text-sm">Avaliação<br />Média</span>
+              <span className="text-3xl font-bold text-primary">100%</span>
+              <span className="text-sm">Sob<br />Medida</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-3xl font-bold text-primary">Web</span>
+              <span className="text-sm">Sites &amp;<br />Automações</span>
             </div>
           </div>
         </div>
