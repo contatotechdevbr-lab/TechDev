@@ -7,7 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import ConfirmEmail from "./pages/ConfirmEmail";
+import VerifyCode from "./pages/VerifyCode";
 import Dashboard from "./pages/Dashboard";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import Overview from "./pages/admin/Overview";
@@ -36,7 +36,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/confirmar-email" element={<ConfirmEmail />} />
+            <Route path="/verificar-codigo" element={<VerifyCode />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute requireAdmin><AdminLayout /></ProtectedRoute>}>
               <Route index element={<Overview />} />

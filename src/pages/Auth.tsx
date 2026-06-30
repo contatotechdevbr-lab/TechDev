@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { MailCheck } from "lucide-react";
 import { z } from "zod";
 
 const schema = z.object({
@@ -25,7 +24,6 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [signupDone, setSignupDone] = useState(false);
 
   // Redireciona somente depois que a verificação de permissão terminou,
   // garantindo que administradores caiam direto no painel admin.
@@ -60,24 +58,33 @@ const Auth = () => {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/confirmar-email`,
-        data: { full_name: fullName },
-      },
-    });
-    setBusy(false);
-    if (error) {
-      toast({ title: "Falha no cadastro", description: error.message, variant: "destructive" });
-      return;
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, fullName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Não foi possível criar sua conta.");
+      }
+      toast({
+        title: "Conta criada!",
+        description: "Enviamos um código de verificação para o seu e-mail.",
+      });
+      // Leva o usuário para a tela de verificação por código (OTP).
+      // A senha trafega apenas em memória (state) para permitir login automático
+      // após a verificação; não é persistida.
+      navigate("/verificar-codigo", { state: { email, password }, replace: true });
+    } catch (err) {
+      toast({
+        title: "Falha no cadastro",
+        description: err instanceof Error ? err.message : "Erro inesperado.",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
     }
-    setSignupDone(true);
-    toast({
-      title: "Conta criada!",
-      description: "Enviamos um e-mail de confirmação para você.",
-    });
   };
 
   const handleGoogle = async () => {
@@ -104,25 +111,6 @@ const Auth = () => {
           <CardDescription>Entre ou crie sua conta</CardDescription>
         </CardHeader>
         <CardContent>
-          {signupDone ? (
-            <div className="space-y-5 py-2 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                <MailCheck className="h-7 w-7 text-primary" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-semibold text-foreground">Confirme seu e-mail</h2>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Enviamos um e-mail de confirmação para{" "}
-                  <span className="font-medium text-foreground">{email}</span>. Verifique sua
-                  caixa de entrada (e a pasta de spam) e clique no link para ativar sua conta.
-                </p>
-              </div>
-              <Button variant="outline" className="w-full" onClick={() => setSignupDone(false)}>
-                Voltar para o login
-              </Button>
-            </div>
-          ) : (
-          <>
           <Tabs defaultValue="signin">
             <TabsList className="grid grid-cols-2 w-full mb-6">
               <TabsTrigger value="signin">Entrar</TabsTrigger>
@@ -172,8 +160,6 @@ const Auth = () => {
           <Button variant="outline" className="w-full" onClick={handleGoogle} disabled={busy}>
             Continuar com Google
           </Button>
-          </>
-          )}
         </CardContent>
       </Card>
     </div>
