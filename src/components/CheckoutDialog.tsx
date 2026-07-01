@@ -19,22 +19,37 @@ export type CheckoutPlan = {
   max_installments: number;
   description?: string;
   is_popular?: boolean;
+  discount_annual_pct?: number;
+  allow_recurring?: boolean;
+  allow_upfront?: boolean;
 };
+
+/** Modo de cobrança escolhido na seção de planos. */
+export type BillingMode = "upfront" | "recurring";
 
 type Props = {
   plan: CheckoutPlan | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** "upfront" = 12 meses à vista (PIX/cartão). "recurring" = recorrência mensal (só cartão). */
+  billingMode?: BillingMode;
 };
 
 type PixData = { qrCode?: string; qrCodeBase64?: string; ticketUrl?: string };
 
-export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
+export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfront" }: Props) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [method, setMethod] = useState<"pix" | "card">("pix");
+  const isRecurring = billingMode === "recurring";
+  // Na recorrência só existe cartão. À vista permite PIX (padrão) ou cartão.
+  const [method, setMethod] = useState<"pix" | "card">(isRecurring ? "card" : "pix");
   const [loading, setLoading] = useState(false);
   const [pix, setPix] = useState<PixData | null>(null);
+
+  // Mantém o método coerente com o modo ao abrir/alternar (recorrência = só cartão).
+  useEffect(() => {
+    setMethod(isRecurring ? "card" : "pix");
+  }, [isRecurring, open]);
 
   // Dados do pagador / cartão
   const [cpf, setCpf] = useState("");
@@ -114,7 +129,15 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   if (!plan) return null;
 
   const fmt = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const total = plan.price_cents;
+
+  // Valores conforme o modo de cobrança:
+  //  - recorrência: cobra o valor MENSAL (12x automáticas no cartão).
+  //  - à vista: cobra os 12 meses de uma vez, com desconto do plano.
+  const discountPct = plan.discount_annual_pct ?? 20;
+  const monthly = plan.price_cents;
+  const upfrontTotal = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
+  const total = isRecurring ? monthly : upfrontTotal;
+  const savings = plan.price_cents * 12 - upfrontTotal;
 
   const resetState = () => {
     setPix(null);
@@ -136,8 +159,44 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   const handleConfirm = async () => {
     if (!user) {
       onOpenChange(false);
-      navigate(`/auth?plan=${plan.id}`);
+      navigate(`/auth?plan=${plan.id}&mode=${billingMode}`);
       return;
+    }
+
+    // ---- Fluxo RECORRENTE (parcelado): assinatura via Mercado Pago ----
+    // O cartão é informado na página segura do Mercado Pago (init_point), por
+    // isso aqui não coletamos cartão nem endereço — apenas redirecionamos.
+    if (isRecurring) {
+      setLoading(true);
+      try {
+        const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");
+        const res = await fetch("/api/mercadopago/create-preapproval", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            planId: plan.id,
+            userId: user.id,
+            payer: { email: user.email, firstName, lastName: rest.join(" ") || "TechDev" },
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.detail ?? err?.error ?? "Falha ao criar a assinatura.");
+        }
+        const data = await res.json();
+        if (!data.initPoint) throw new Error("Não foi possível iniciar a autorização do cartão.");
+        toast({
+          title: "Redirecionando…",
+          description: "Você autorizará o cartão com segurança no Mercado Pago.",
+        });
+        // Redireciona para a página de autorização da assinatura recorrente.
+        window.location.href = data.initPoint;
+        return;
+      } catch (e: any) {
+        toast({ title: "Erro na assinatura", description: e.message, variant: "destructive" });
+        setLoading(false);
+        return;
+      }
     }
 
     if (!cpf.trim()) {
@@ -280,7 +339,11 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
       <DialogContent className="flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-md flex-col gap-0 p-0 sm:w-full">
         <DialogHeader className="border-b border-border px-6 pb-4 pt-6 text-left">
           <DialogTitle>Assinar {plan.name}</DialogTitle>
-          <DialogDescription>Pague com PIX ou cartão de crédito de forma segura.</DialogDescription>
+          <DialogDescription>
+            {isRecurring
+              ? "Recorrência no cartão: 12 cobranças mensais automáticas."
+              : "12 meses à vista com desconto — pague no PIX ou cartão."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -313,11 +376,19 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
           /* ---- Formulário de checkout ---- */
           <div className="space-y-4">
             <div className="rounded-lg border border-border bg-secondary/30 p-4">
-              <div className="flex items-baseline justify-between mb-3">
+              <div className="flex items-baseline justify-between">
                 <span className="font-semibold">{plan.name}</span>
-                <span className="text-2xl font-bold text-primary">{fmt(total)}</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-primary">{fmt(total)}</span>
+                  <span className="text-sm text-muted-foreground">{isRecurring ? "/mês" : " à vista"}</span>
+                </div>
               </div>
-              <ul className="space-y-1.5">
+              <p className="mb-3 mt-0.5 text-right text-xs text-muted-foreground">
+                {isRecurring
+                  ? "12 cobranças mensais automáticas no cartão"
+                  : `12 meses de uma vez • você economiza ${fmt(savings)} (${discountPct}%)`}
+              </p>
+              <ul className="space-y-1.5 border-t border-border pt-3">
                 {plan.features.slice(0, 4).map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
                     <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
@@ -327,6 +398,21 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
               </ul>
             </div>
 
+            {isRecurring && (
+              <div className="rounded-lg border border-border bg-card/60 p-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <CreditCard className="h-4 w-4 text-primary" /> Cartão de crédito (recorrência)
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Ao continuar, você será levado ao ambiente seguro do Mercado Pago para autorizar
+                  o cartão. Depois disso, a cobrança de {fmt(monthly)} é feita automaticamente todo
+                  mês, por 12 meses. O PIX não está disponível nesta opção.
+                </p>
+              </div>
+            )}
+
+            {!isRecurring && (
+            <>
             <div className="space-y-2">
               <Label>Forma de pagamento</Label>
               <RadioGroup value={method} onValueChange={(v) => setMethod(v as "pix" | "card")} className="grid grid-cols-2 gap-2">
@@ -422,12 +508,16 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
                 </div>
               </div>
             )}
+            </>
+            )}
 
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-primary/5 border border-primary/20 rounded-md p-3">
               <ShieldCheck className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
               <span>
-                Pagamento processado com segurança pelo Mercado Pago. Os dados do seu cartão são
-                tokenizados no navegador e nunca passam pelos nossos servidores.
+                Pagamento processado com segurança pelo Mercado Pago.{" "}
+                {isRecurring
+                  ? "A autorização do cartão acontece no ambiente do Mercado Pago."
+                  : "Os dados do seu cartão são tokenizados no navegador e nunca passam pelos nossos servidores."}
               </span>
             </div>
           </div>
@@ -441,7 +531,11 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
             </Button>
             <Button variant="hero" onClick={handleConfirm} disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {user ? `Pagar ${fmt(total)}` : "Entrar para assinar"}
+              {!user
+                ? "Entrar para assinar"
+                : isRecurring
+                ? `Assinar ${fmt(monthly)}/mês`
+                : `Pagar ${fmt(total)}`}
             </Button>
           </DialogFooter>
         )}

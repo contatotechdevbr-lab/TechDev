@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { createPaymentClient } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
-import { reconcilePayment, type PaymentRow } from "../_lib/reconcile.js";
+import { reconcilePayment, reconcilePreapproval, type PaymentRow } from "../_lib/reconcile.js";
 
 /**
  * Webhook de notificações do Mercado Pago.
@@ -65,8 +65,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const topic: string = String(queryTopic ?? body.type ?? body.topic ?? "");
     const dataId: string = String(queryDataId ?? body.data?.id ?? body.resource ?? "");
 
-    // Só tratamos notificações de pagamento
-    if (!dataId || (topic && !topic.includes("payment"))) {
+    // Aceitamos dois grupos de eventos:
+    //  - pagamento (Orders API / à vista): topic contém "payment"
+    //  - assinatura recorrente: topic "subscription_preapproval",
+    //    "subscription_authorized_payment" (contém "subscription" ou "preapproval").
+    const isSubscriptionEvent = topic.includes("preapproval") || topic.includes("subscription");
+    const isPaymentEvent = topic.includes("payment") && !isSubscriptionEvent;
+
+    if (!dataId || (topic && !isPaymentEvent && !isSubscriptionEvent)) {
       return res.status(200).json({ received: true, ignored: true });
     }
 
@@ -74,6 +80,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!isValidSignature(req, dataId)) {
       console.log("[v0] Assinatura do webhook inválida.");
       return res.status(401).json({ error: "Assinatura inválida." });
+    }
+
+    // ---- Evento de assinatura recorrente (preapproval) ----
+    if (isSubscriptionEvent) {
+      const eventId = `sub:${topic}:${dataId}`;
+      const { error: dupErr } = await supabaseAdmin
+        .from("webhook_events")
+        .insert({ id: eventId, topic, resource_id: dataId, payload: body });
+      if (dupErr?.code === "23505") {
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+
+      // Para "subscription_authorized_payment", o data.id é o pagamento; o
+      // preapproval_id vem no corpo. Priorizamos o preapproval_id quando existe.
+      const preapprovalId = String(
+        body?.data?.preapproval_id ?? body?.preapproval_id ?? (topic.includes("preapproval") ? dataId : ""),
+      );
+      if (!preapprovalId) {
+        return res.status(200).json({ received: true, skipped: "sem preapproval_id" });
+      }
+
+      const subStatus = await reconcilePreapproval(preapprovalId);
+      await supabaseAdmin.from("webhook_events").update({ status: subStatus }).eq("id", eventId);
+      return res.status(200).json({ received: true, subscription: subStatus });
     }
 
     // Idempotência: tenta registrar este evento; se já existe, ignora

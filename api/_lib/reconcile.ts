@@ -1,4 +1,4 @@
-import { getAccessToken } from "./mercadopago.js";
+import { getAccessToken, fetchPreapproval } from "./mercadopago.js";
 import { supabaseAdmin } from "./supabase-admin.js";
 
 /**
@@ -153,6 +153,83 @@ export async function applyPaidSideEffects(
     title: "Nova assinatura ativada",
     description: `${payerEmail ?? "Um cliente"} assinou o plano ${plan?.name ?? ""}.`.trim(),
   });
+}
+
+/**
+ * Reconcilia uma assinatura RECORRENTE (preapproval) com o Mercado Pago.
+ *
+ * Consulta o status real do preapproval e reflete na assinatura + no cadastro
+ * do cliente. Quando "authorized", a assinatura fica ativa e o primeiro
+ * pagamento é marcado como pago (as cobranças mensais seguem automáticas).
+ */
+export async function reconcilePreapproval(preapprovalId: string): Promise<string> {
+  const { ok, data: pre } = await fetchPreapproval(preapprovalId);
+  if (!ok) {
+    console.log("[v0] reconcile preapproval: GET falhou", preapprovalId);
+    return "pending";
+  }
+
+  const mpStatus: string = pre?.status ?? "pending"; // pending | authorized | paused | cancelled
+  const externalRef: string = pre?.external_reference ?? "";
+
+  // Localiza a assinatura pelo preapproval id (ou external_reference).
+  let sub: any = null;
+  {
+    const { data } = await supabaseAdmin
+      .from("subscriptions")
+      .select("id, user_id, plan_id, status")
+      .eq("mp_preapproval_id", preapprovalId)
+      .maybeSingle();
+    sub = data;
+  }
+  if (!sub && externalRef) {
+    const { data } = await supabaseAdmin
+      .from("subscriptions")
+      .select("id, user_id, plan_id, status")
+      .eq("mp_external_reference", externalRef)
+      .maybeSingle();
+    sub = data;
+  }
+  if (!sub) {
+    console.log("[v0] reconcile preapproval: assinatura não encontrada", preapprovalId);
+    return mpStatus;
+  }
+
+  // Mapeia o status do MP para o status interno da assinatura.
+  const subStatus =
+    mpStatus === "authorized"
+      ? "active"
+      : mpStatus === "paused"
+      ? "paused"
+      : mpStatus === "cancelled"
+      ? "canceled"
+      : "pending";
+
+  const periodEnd = new Date();
+  periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+  await supabaseAdmin
+    .from("subscriptions")
+    .update({
+      status: subStatus,
+      current_period_end: periodEnd.toISOString(),
+      ...(subStatus === "canceled" ? { canceled_at: new Date().toISOString() } : { canceled_at: null }),
+    })
+    .eq("id", sub.id);
+
+  if (subStatus === "active" && sub.user_id && sub.plan_id) {
+    // Marca o pagamento recorrente inicial como pago (para financeiro/relatórios).
+    if (externalRef) {
+      await supabaseAdmin
+        .from("payments")
+        .update({ status: "paid", paid_at: new Date().toISOString() })
+        .eq("mp_external_reference", externalRef)
+        .eq("status", "pending");
+    }
+    await applyPaidSideEffects(sub.user_id, sub.plan_id, pre?.payer_email ?? null);
+  }
+
+  return subStatus;
 }
 
 /** Reconcilia todos os pagamentos pendentes de um usuário. Retorna quantos viraram "paid". */

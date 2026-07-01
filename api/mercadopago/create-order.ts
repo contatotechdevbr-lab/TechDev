@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1) Busca o plano no banco para obter o valor REAL (nunca confiar no cliente)
     const { data: plan, error: planError } = await supabaseAdmin
       .from("plans")
-      .select("id, name, price_cents")
+      .select("id, name, price_cents, discount_annual_pct, allow_upfront")
       .eq("id", planId)
       .eq("active", true)
       .maybeSingle();
@@ -45,8 +45,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (planError || !plan) {
       return res.status(404).json({ error: "Plano não encontrado ou inativo." });
     }
+    if (plan.allow_upfront === false) {
+      return res.status(400).json({ error: "Este plano não aceita pagamento à vista." });
+    }
 
-    const amount = (plan.price_cents / 100).toFixed(2);
+    // À VISTA: pagamento único referente aos 12 meses, com desconto do plano.
+    // total = mensal × 12 × (1 − desconto%). Sempre calculado no servidor.
+    const discountPct = Number(plan.discount_annual_pct ?? 20);
+    const amountCents = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
+    const amount = (amountCents / 100).toFixed(2);
     const externalReference = randomUUID();
 
     // 1.1) Busca a data REAL de cadastro do usuário (nunca usar valor fictício).
@@ -187,10 +194,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { error: insertError } = await supabaseAdmin.from("payments").insert({
       user_id: userId ?? null,
       plan_id: plan.id,
-      amount_cents: plan.price_cents,
+      amount_cents: amountCents,
       installments: method === "card" ? card?.installments ?? 1 : 1,
       status: "pending",
       payment_method: method,
+      billing_type: "upfront",
       payer_email: payer.email,
       mp_order_id: String(orderAny?.id ?? ""),
       mp_payment_id: payment?.id ? String(payment.id) : null,

@@ -117,6 +117,48 @@ export async function createOrderViaApi(params: {
   return { ok: resp.ok, status: resp.status, data };
 }
 
+/**
+ * Cria uma assinatura recorrente (Preapproval) no Mercado Pago.
+ *
+ * Sem `card_token_id`: a API retorna um `init_point` para o cliente autorizar o
+ * cartão na página do Mercado Pago (modelo "subscription with pending payment").
+ * Observações importantes descobertas em testes reais com a API:
+ *  - `back_url` precisa ser a raiz do domínio (ex.: https://www.techdev.website);
+ *    caminhos com path podem ser recusados como "Invalid value for back_url".
+ *  - Use `end_date` no auto_recurring (ex.: +12 meses). O campo `repetitions`
+ *    causa erro 500 nesta conta.
+ */
+export async function createPreapprovalViaApi(params: {
+  body: unknown;
+  idempotencyKey: string;
+}): Promise<{ ok: boolean; status: number; data: any }> {
+  const resp = await fetch("https://api.mercadopago.com/preapproval", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getAccessToken()}`,
+      "Content-Type": "application/json",
+      "X-Idempotency-Key": params.idempotencyKey,
+      "User-Agent": getSdkUserAgent(),
+      "X-Product-Id": MP_PRODUCT_ID,
+      "X-Tracking-Id": getSdkTrackingId(),
+    },
+    body: JSON.stringify(params.body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
+/** Consulta uma assinatura recorrente (Preapproval) pelo id. */
+export async function fetchPreapproval(
+  preapprovalId: string,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const resp = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+    headers: { Authorization: `Bearer ${getAccessToken()}` },
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
 /* ----------------------------------------------------------------
  * Fábricas de clientes de API reutilizáveis (Checkout Transparente).
  * Use `createOrderClient()` para a Orders API (Checkout Transparente).

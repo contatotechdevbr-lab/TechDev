@@ -13,7 +13,7 @@ import {
   ShieldAlert,
   MessageCircle,
 } from "lucide-react";
-import { CheckoutDialog, type CheckoutPlan } from "@/components/CheckoutDialog";
+import { CheckoutDialog, type CheckoutPlan, type BillingMode } from "@/components/CheckoutDialog";
 import { supabase } from "@/integrations/supabase/client";
 
 const WHATSAPP_LINK =
@@ -87,6 +87,7 @@ type Tab = "assinatura" | "projeto";
 
 export const PricingSection = () => {
   const [tab, setTab] = useState<Tab>("assinatura");
+  const [billingMode, setBillingMode] = useState<BillingMode>("upfront");
   const [plans, setPlans] = useState<CheckoutPlan[]>(FALLBACK_PLANS);
   const [selected, setSelected] = useState<CheckoutPlan | null>(null);
 
@@ -94,7 +95,9 @@ export const PricingSection = () => {
     let active = true;
     supabase
       .from("plans")
-      .select("id, name, description, price_cents, features, max_installments, is_popular")
+      .select(
+        "id, name, description, price_cents, features, max_installments, is_popular, discount_annual_pct, allow_recurring, allow_upfront",
+      )
       .eq("active", true)
       .order("price_cents", { ascending: true })
       .then(({ data }) => {
@@ -108,6 +111,9 @@ export const PricingSection = () => {
               features: p.features ?? [],
               max_installments: p.max_installments ?? 1,
               is_popular: p.is_popular ?? false,
+              discount_annual_pct: p.discount_annual_pct ?? 20,
+              allow_recurring: p.allow_recurring ?? true,
+              allow_upfront: p.allow_upfront ?? true,
             })),
           );
         }
@@ -159,18 +165,57 @@ export const PricingSection = () => {
             </button>
           </div>
         </div>
-        <p className="text-center text-sm text-muted-foreground mb-12">
+        <p className="text-center text-sm text-muted-foreground mb-8">
           {tab === "assinatura"
-            ? "Cobrança recorrente mensal, cancele quando quiser."
+            ? "É a mesma assinatura — você só escolhe como quer pagar."
             : "Orçamento sob medida para o seu projeto, sem mensalidade fixa."}
         </p>
+
+        {/* Seletor de forma de pagamento (mesma assinatura) */}
+        {tab === "assinatura" && (
+          <div className="mb-10 flex flex-col items-center gap-3">
+            <div className="inline-flex items-center rounded-full border border-border bg-card/60 p-1">
+              <button
+                type="button"
+                onClick={() => setBillingMode("upfront")}
+                className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+                  billingMode === "upfront"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                À vista · 20% OFF
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingMode("recurring")}
+                className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
+                  billingMode === "recurring"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Parcelado · 12x no cartão
+              </button>
+            </div>
+            <p className="text-center text-xs text-muted-foreground max-w-md text-pretty">
+              {billingMode === "upfront"
+                ? "Pagamento único referente aos 12 meses (PIX ou cartão), com desconto."
+                : "12 cobranças mensais automáticas no cartão de crédito (recorrência)."}
+            </p>
+          </div>
+        )}
 
         {/* Aba: Assinatura — 3 cards */}
         {tab === "assinatura" && (
           <div className="grid gap-6 md:grid-cols-3 max-w-6xl mx-auto items-stretch">
             {plans.map((plan) => {
               const popular = plan.is_popular;
-              const { reais, centavos } = formatPrice(plan.price_cents);
+              const discountPct = plan.discount_annual_pct ?? 20;
+              const upfrontTotalCents = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
+              const isUpfront = billingMode === "upfront";
+              // No modo à vista mostramos o TOTAL dos 12 meses; no parcelado, o valor mensal.
+              const { reais, centavos } = formatPrice(isUpfront ? upfrontTotalCents : plan.price_cents);
               return (
                 <div
                   key={plan.id}
@@ -192,9 +237,18 @@ export const PricingSection = () => {
                     <span className="align-top text-lg font-semibold text-primary">R$ </span>
                     <span className="text-5xl font-bold text-primary">{reais}</span>
                     <span className="text-2xl font-bold text-primary">,{centavos}</span>
-                    <span className="text-sm text-muted-foreground">/mês</span>
+                    <span className="text-sm text-muted-foreground">{isUpfront ? " à vista" : "/mês"}</span>
                   </div>
-                  <p className="text-center text-xs text-muted-foreground mb-2">Cobrança recorrente mensal</p>
+                  <p className="text-center text-xs text-muted-foreground mb-2">
+                    {isUpfront ? (
+                      <>
+                        12 meses de uma vez ·{" "}
+                        <span className="font-semibold text-primary">{discountPct}% de desconto</span>
+                      </>
+                    ) : (
+                      "12x no cartão · cobrança mensal automática"
+                    )}
+                  </p>
                   <p className="text-center text-sm text-foreground/80 mb-6">{plan.description}</p>
                   <ul className="space-y-3 mb-8 flex-1">
                     {plan.features.map((f) => (
@@ -209,7 +263,7 @@ export const PricingSection = () => {
                     variant={popular ? "default" : "outline"}
                     onClick={() => setSelected(plan)}
                   >
-                    Assinar plano mensal
+                    {isUpfront ? "Assinar à vista" : "Assinar parcelado"}
                   </Button>
                 </div>
               );
@@ -261,7 +315,12 @@ export const PricingSection = () => {
       </div>
 
       {selected && (
-        <CheckoutDialog plan={selected} open={!!selected} onOpenChange={(o) => !o && setSelected(null)} />
+        <CheckoutDialog
+          plan={selected}
+          open={!!selected}
+          billingMode={billingMode}
+          onOpenChange={(o) => !o && setSelected(null)}
+        />
       )}
     </section>
   );
