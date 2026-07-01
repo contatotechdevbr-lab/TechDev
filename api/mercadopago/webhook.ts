@@ -141,6 +141,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const periodEnd = new Date();
       periodEnd.setMonth(periodEnd.getMonth() + 1);
 
+      // Busca nome e valor do plano para refletir no painel admin (tabela clients).
+      const { data: plan } = await supabaseAdmin
+        .from("plans")
+        .select("name, price_cents")
+        .eq("id", updated.plan_id)
+        .maybeSingle();
+
       const { data: existingSub } = await supabaseAdmin
         .from("subscriptions")
         .select("id")
@@ -165,6 +172,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           current_period_end: periodEnd.toISOString(),
         });
       }
+
+      // Reflete o plano assinado no cadastro do cliente (Painel CEO):
+      // marca como "ativo", grava o plano, o valor mensal e a próxima cobrança.
+      const { error: clientErr } = await supabaseAdmin
+        .from("clients")
+        .update({
+          status: "ativo",
+          plano: plan?.name ?? null,
+          valor_mensal_cents: plan?.price_cents ?? null,
+          next_payment: periodEnd.toISOString().slice(0, 10),
+        })
+        .eq("user_id", updated.user_id);
+      if (clientErr) {
+        console.log("[v0] Erro ao atualizar cliente no painel:", clientErr.message);
+      }
+
+      // Cria uma notificação para o admin acompanhar a nova assinatura.
+      const payerEmail = payment?.payer?.email ?? "Um cliente";
+      await supabaseAdmin.from("notifications").insert({
+        type: "pagamento",
+        title: "Nova assinatura ativada",
+        description: `${payerEmail} assinou o plano ${plan?.name ?? ""}.`.trim(),
+      });
     }
 
     return res.status(200).json({ received: true, status: newStatus });

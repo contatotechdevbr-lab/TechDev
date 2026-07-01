@@ -256,12 +256,13 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-md flex-col gap-0 p-0 sm:w-full">
+        <DialogHeader className="border-b border-border px-6 pb-4 pt-6 text-left">
           <DialogTitle>Assinar {plan.name}</DialogTitle>
           <DialogDescription>Pague com PIX ou cartão de crédito de forma segura.</DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         {pix ? (
           /* ---- Tela do PIX gerado ---- */
           <div className="space-y-4 text-center">
@@ -410,9 +411,10 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
             </div>
           </div>
         )}
+        </div>
 
         {!pix && (
-          <DialogFooter>
+          <DialogFooter className="border-t border-border px-6 py-4">
             <Button variant="ghost" onClick={() => handleClose(false)} disabled={loading}>
               Cancelar
             </Button>
