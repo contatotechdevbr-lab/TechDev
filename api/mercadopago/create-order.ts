@@ -109,20 +109,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Dados do cartão ausentes." });
     }
 
-    // URL de notificação (webhook) do Mercado Pago. Sem isso, o MP não sabe
-    // para onde enviar a confirmação do pagamento e o status fica "pending".
-    const notificationUrl =
-      process.env.MERCADO_PAGO_NOTIFICATION_URL ??
-      "https://www.techdev.website/api/mercadopago/webhook";
-
     // 3) Cria a Order no Mercado Pago (com chave de idempotência)
+    // OBS: a Orders API (/v1/orders) NÃO aceita o campo "notification_url" no corpo
+    // (retorna 400 "unsupported_properties"). A URL de webhook deve ser configurada
+    // no painel do Mercado Pago (Suas integrações > Webhooks). A confirmação do
+    // pagamento é garantida de qualquer forma pela reconciliação via Orders API
+    // (endpoint payment-status + polling no checkout e no painel do cliente).
     const orderBody = {
       type: "online" as const,
       total_amount: amount,
       external_reference: externalReference,
       processing_mode: "automatic" as const,
       description: `Assinatura ${plan.name} - TechDev`,
-      notification_url: notificationUrl,
       payer: {
         email: payer.email,
         first_name: payer.firstName,
