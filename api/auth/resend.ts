@@ -65,7 +65,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: "Erro ao gerar o código de verificação." });
     }
 
-    await sendOtpEmail(emailNorm, code);
+    try {
+      await sendOtpEmail(emailNorm, code);
+    } catch (mailErr) {
+      console.error("[v0] resend sendOtpEmail error:", mailErr);
+      const detail = mailErr instanceof Error ? mailErr.message : "";
+      const isResendTestMode = /you can only send testing emails|verify a domain/i.test(detail);
+      return res.status(502).json({
+        error: isResendTestMode
+          ? "Não foi possível enviar o e-mail. O provedor (Resend) está em modo de teste: verifique um domínio em resend.com/domains e atualize RESEND_FROM."
+          : "Não foi possível enviar o e-mail agora. Tente novamente em instantes.",
+        code: "EMAIL_SEND_FAILED",
+      });
+    }
 
     return res.status(200).json({ ok: true, message: "Novo código enviado para o seu e-mail." });
   } catch (err) {
