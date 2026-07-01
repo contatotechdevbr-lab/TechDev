@@ -13,9 +13,9 @@ import { FileSpreadsheet } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { exportarOperacoes } from "@/lib/export-excel";
 import {
-  faturamentoMensal, crescimentoClientes, distribuicaoPlanos,
-  statusProjetos, cancelamentosMensais, fmtBRL,
+  crescimentoClientes, statusProjetos, cancelamentosMensais, fmtBRL,
 } from "@/lib/mock-data";
+import { useFinancas, faturamentoPorMes, distribuicaoPorPlano } from "@/lib/financas-store";
 
 const chartTooltip = {
   contentStyle: {
@@ -36,6 +36,10 @@ const eixo = {
 
 export default function Relatorios() {
   const [periodo, setPeriodo] = useState("6m");
+  const { pagamentos, assinaturas } = useFinancas();
+  const mesesPeriodo = periodo === "3m" ? 3 : periodo === "12m" ? 12 : 6;
+  const faturamentoMensal = faturamentoPorMes(pagamentos, mesesPeriodo);
+  const distribuicaoPlanos = distribuicaoPorPlano(assinaturas);
 
   const exportar = () => {
     exportarOperacoes();

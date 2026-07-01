@@ -19,7 +19,14 @@ import { StatCard } from "@/components/admin/StatCard";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { toast } from "@/hooks/use-toast";
 import { exportarOperacoes } from "@/lib/export-excel";
-import { pagamentos, assinaturas, faturamentoMensal, clienteById, fmtBRL, fmtData } from "@/lib/mock-data";
+import { fmtBRL, fmtData } from "@/lib/mock-data";
+import {
+  useFinancas,
+  clienteInfoByUserId,
+  faturamentoPorMes,
+  receitaPagaCents,
+  mrrCents,
+} from "@/lib/financas-store";
 
 const chartTooltip = {
   contentStyle: {
@@ -37,22 +44,27 @@ const gastosMensaisCents = 182000;
 const Financeiro = () => {
   const [search, setSearch] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("todos");
+  const { pagamentos, assinaturas } = useFinancas();
 
-  const receitaTotal = pagamentos.filter((p) => p.status === "pago").reduce((a, p) => a + p.valorCents, 0);
-  const mrr = assinaturas.filter((a) => a.status === "ativa").reduce((a, s) => a + s.valorCents, 0);
+  const receitaTotal = receitaPagaCents(pagamentos);
+  const mrr = mrrCents(assinaturas);
   const receitaAnual = mrr * 12;
   const lucroEstimado = mrr - gastosMensaisCents;
+  const faturamentoMensal = useMemo(() => faturamentoPorMes(pagamentos, 6), [pagamentos]);
 
   const filtrados = useMemo(
     () =>
       pagamentos.filter((p) => {
-        const cliente = clienteById(p.clienteId);
+        const cliente = clienteInfoByUserId(p.clienteId);
         const q = search.toLowerCase();
-        const matchBusca = !q || (cliente?.nome.toLowerCase().includes(q) || cliente?.empresa.toLowerCase().includes(q));
+        const matchBusca =
+          !q ||
+          (cliente?.full_name.toLowerCase().includes(q) ||
+            cliente?.company?.toLowerCase().includes(q));
         const matchStatus = statusFiltro === "todos" || p.status === statusFiltro;
         return matchBusca && matchStatus;
       }),
-    [search, statusFiltro]
+    [pagamentos, search, statusFiltro]
   );
 
   const exportar = () => {
@@ -140,12 +152,12 @@ const Financeiro = () => {
               </TableHeader>
               <TableBody>
                 {filtrados.map((p) => {
-                  const cliente = clienteById(p.clienteId);
+                  const cliente = clienteInfoByUserId(p.clienteId);
                   return (
                     <TableRow key={p.id}>
                       <TableCell>
-                        <p className="font-medium">{cliente?.nome ?? "—"}</p>
-                        <p className="text-xs text-muted-foreground">{cliente?.empresa}</p>
+                        <p className="font-medium">{cliente?.full_name ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">{cliente?.company}</p>
                       </TableCell>
                       <TableCell>{p.plano}</TableCell>
                       <TableCell className="font-medium">{fmtBRL(p.valorCents)}</TableCell>

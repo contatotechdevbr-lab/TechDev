@@ -14,38 +14,50 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  assinaturas as seed, clienteById, fmtBRL, fmtData,
-  type Assinatura, type StatusAssinatura,
-} from "@/lib/mock-data";
+import { fmtBRL, fmtData, type StatusAssinatura } from "@/lib/mock-data";
+import { useFinancas, clienteInfoByUserId, mrrCents } from "@/lib/financas-store";
+import { supabase } from "@/integrations/supabase/client";
 import { RefreshCw, Search, MoreHorizontal, Pause, Play, XCircle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+// UI (pt) -> status do banco
+const STATUS_DB: Record<string, string> = {
+  ativa: "active",
+  pausada: "paused",
+  cancelada: "canceled",
+};
+
 export default function Assinaturas() {
   const { toast } = useToast();
-  const [lista, setLista] = useState<Assinatura[]>(seed);
+  const { assinaturas: lista } = useFinancas();
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<string>("todas");
 
   const filtradas = useMemo(() => {
     return lista.filter((a) => {
-      const cliente = clienteById(a.clienteId);
-      const texto = `${cliente?.nome ?? ""} ${cliente?.empresa ?? ""} ${a.plano}`.toLowerCase();
+      const cliente = clienteInfoByUserId(a.clienteId);
+      const texto = `${cliente?.full_name ?? ""} ${cliente?.company ?? ""} ${a.plano}`.toLowerCase();
       const okBusca = texto.includes(busca.toLowerCase());
       const okStatus = status === "todas" || a.status === status;
       return okBusca && okStatus;
     });
   }, [lista, busca, status]);
 
-  const mrr = lista
-    .filter((a) => a.status === "ativa")
-    .reduce((acc, a) => acc + a.valorCents, 0);
+  const mrr = mrrCents(lista);
   const ativas = lista.filter((a) => a.status === "ativa").length;
   const atrasadas = lista.filter((a) => a.status === "atrasada").length;
   const canceladas = lista.filter((a) => a.status === "cancelada").length;
 
-  const mudarStatus = (id: string, novo: StatusAssinatura, label: string) => {
-    setLista((prev) => prev.map((a) => (a.id === id ? { ...a, status: novo } : a)));
+  const mudarStatus = async (id: string, novo: StatusAssinatura, label: string) => {
+    const dbStatus = STATUS_DB[novo] ?? novo;
+    const patch: Record<string, unknown> = { status: dbStatus };
+    if (novo === "cancelada") patch.canceled_at = new Date().toISOString();
+    if (novo === "ativa") patch.canceled_at = null;
+    const { error } = await supabase.from("subscriptions").update(patch).eq("id", id);
+    if (error) {
+      toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" });
+      return;
+    }
     toast({ title: "Assinatura atualizada", description: `Status alterado para ${label}.` });
   };
 
@@ -104,12 +116,12 @@ export default function Assinaturas() {
               </TableHeader>
               <TableBody>
                 {filtradas.map((a) => {
-                  const cliente = clienteById(a.clienteId);
+                  const cliente = clienteInfoByUserId(a.clienteId);
                   return (
                     <TableRow key={a.id}>
                       <TableCell>
-                        <div className="font-medium text-foreground">{cliente?.nome ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">{cliente?.empresa}</div>
+                        <div className="font-medium text-foreground">{cliente?.full_name ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground">{cliente?.company}</div>
                       </TableCell>
                       <TableCell>{a.plano}</TableCell>
                       <TableCell className="font-medium">{fmtBRL(a.valorCents)}</TableCell>
