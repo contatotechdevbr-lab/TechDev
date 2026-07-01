@@ -179,11 +179,21 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
             payer: { email: user.email, firstName, lastName: rest.join(" ") || "TechDev" },
           }),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err?.detail ?? err?.error ?? "Falha ao criar a assinatura.");
+
+        // Se a resposta não for JSON, o backend de pagamento não está disponível
+        // (ex.: pré-visualização de desenvolvimento). As funções /api só rodam no
+        // site publicado (www.techdev.website).
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            "O pagamento só funciona no site publicado (www.techdev.website), não na pré-visualização.",
+          );
         }
-        const data = await res.json();
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.detail ?? data?.error ?? "Falha ao criar a assinatura.");
+        }
         if (!data.initPoint) throw new Error("Não foi possível iniciar a autorização do cartão.");
         toast({
           title: "Redirecionando…",
@@ -280,6 +290,15 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
           address: { city: cityValue, state: ufValue, zipCode: zipValue },
         }),
       });
+
+      // As funções /api só rodam no site publicado; na pré-visualização a
+      // resposta não é JSON. Damos uma mensagem clara nesse caso.
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          "O pagamento só funciona no site publicado (www.techdev.website), não na pré-visualização.",
+        );
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
