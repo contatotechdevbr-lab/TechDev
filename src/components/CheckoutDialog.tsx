@@ -240,9 +240,30 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
         setPix(data.pix);
         toast({ title: "PIX gerado!", description: "Escaneie o QR Code ou copie o código para pagar." });
       } else {
+        // Cartão: confirma o status real na Orders API antes de redirecionar.
+        // Faz algumas tentativas curtas para dar feedback imediato ao cliente.
+        let confirmed = false;
+        if (data.orderId) {
+          for (let i = 0; i < 4 && !confirmed; i++) {
+            try {
+              const st = await fetch("/api/mercadopago/payment-status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderId: data.orderId }),
+              });
+              const j = await st.json().catch(() => ({}));
+              if (j?.paid) confirmed = true;
+            } catch {
+              /* segue tentando */
+            }
+            if (!confirmed) await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
         toast({
-          title: "Pagamento enviado!",
-          description: "Acompanhe o status da sua assinatura no painel.",
+          title: confirmed ? "Pagamento aprovado!" : "Pagamento enviado!",
+          description: confirmed
+            ? "Sua assinatura já está ativa. Confira no painel."
+            : "Estamos confirmando seu pagamento. Acompanhe no painel.",
         });
         handleClose(false);
         navigate("/dashboard");

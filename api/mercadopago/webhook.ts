@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { createPaymentClient } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import { reconcilePayment, type PaymentRow } from "../_lib/reconcile.js";
 
 /**
  * Webhook de notificações do Mercado Pago.
@@ -15,27 +16,6 @@ import { supabaseAdmin } from "../_lib/supabase-admin.js";
  *    confiando apenas no corpo recebido.
  *  - Responde 200 rapidamente para evitar reenvios desnecessários.
  */
-
-// Mapeia o status do Mercado Pago para o enum payment_status do banco
-function mapPaymentStatus(mpStatus: string): string {
-  switch (mpStatus) {
-    case "approved":
-      return "paid";
-    case "authorized":
-    case "in_process":
-    case "pending":
-      return "pending";
-    case "rejected":
-      return "failed";
-    case "refunded":
-    case "charged_back":
-      return "refunded";
-    case "cancelled":
-      return "canceled";
-    default:
-      return "pending";
-  }
-}
 
 /** Valida a assinatura x-signature conforme a documentação do Mercado Pago. */
 function isValidSignature(req: VercelRequest, dataId: string): boolean {
@@ -110,92 +90,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("[v0] Erro ao registrar webhook_event:", dupError.message);
     }
 
-    // Consulta o status REAL do pagamento na API do Mercado Pago
+    // Consulta o pagamento na API do Mercado Pago para obter o external_reference.
+    // A notificação traz o ID NUMÉRICO do pagamento; o external_reference (UUID)
+    // é o que casa de forma confiável com o registro em `payments`.
     const paymentClient = createPaymentClient();
     const payment = (await paymentClient.get({ id: dataId })) as Record<string, any>;
-    const mpStatus: string = payment?.status ?? "pending";
-    const newStatus = mapPaymentStatus(mpStatus);
+    const externalReference = String(payment?.external_reference ?? "");
 
-    // Atualiza o pagamento no banco (casa por mp_payment_id ou mp_order_id)
-    const orderId = String(payment?.order?.id ?? "");
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from("payments")
-      .update({
-        status: newStatus,
-        mp_payment_id: String(dataId),
-        paid_at: newStatus === "paid" ? new Date().toISOString() : null,
-      })
-      .or(`mp_payment_id.eq.${dataId}${orderId ? `,mp_order_id.eq.${orderId}` : ""}`)
-      .select("id, user_id, plan_id")
-      .maybeSingle();
-
-    if (updateError) {
-      console.log("[v0] Erro ao atualizar pagamento:", updateError.message);
+    // Localiza o registro do pagamento: primeiro por external_reference,
+    // com fallback para o ID numérico já gravado (mp_payment_id).
+    let row: PaymentRow | null = null;
+    if (externalReference) {
+      const { data } = await supabaseAdmin
+        .from("payments")
+        .select("id, user_id, plan_id, status, mp_order_id, payer_email")
+        .eq("mp_external_reference", externalReference)
+        .maybeSingle();
+      row = (data as PaymentRow) ?? null;
+    }
+    if (!row) {
+      const { data } = await supabaseAdmin
+        .from("payments")
+        .select("id, user_id, plan_id, status, mp_order_id, payer_email")
+        .eq("mp_payment_id", String(dataId))
+        .maybeSingle();
+      row = (data as PaymentRow) ?? null;
     }
 
-    // Atualiza o status registrado no evento
+    if (!row) {
+      console.log("[v0] webhook: pagamento não encontrado para", dataId, externalReference);
+      await supabaseAdmin.from("webhook_events").update({ status: "not_found" }).eq("id", eventId);
+      return res.status(200).json({ received: true, matched: false });
+    }
+
+    // Reconcilia pela Orders API (fonte da verdade) usando o mp_order_id do registro.
+    const newStatus = await reconcilePayment(row);
     await supabaseAdmin.from("webhook_events").update({ status: newStatus }).eq("id", eventId);
-
-    // Se aprovado, ativa/atualiza a assinatura do cliente
-    if (newStatus === "paid" && updated?.user_id && updated?.plan_id) {
-      const periodEnd = new Date();
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-      // Busca nome e valor do plano para refletir no painel admin (tabela clients).
-      const { data: plan } = await supabaseAdmin
-        .from("plans")
-        .select("name, price_cents")
-        .eq("id", updated.plan_id)
-        .maybeSingle();
-
-      const { data: existingSub } = await supabaseAdmin
-        .from("subscriptions")
-        .select("id")
-        .eq("user_id", updated.user_id)
-        .maybeSingle();
-
-      if (existingSub) {
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({
-            plan_id: updated.plan_id,
-            status: "active",
-            current_period_end: periodEnd.toISOString(),
-            canceled_at: null,
-          })
-          .eq("id", existingSub.id);
-      } else {
-        await supabaseAdmin.from("subscriptions").insert({
-          user_id: updated.user_id,
-          plan_id: updated.plan_id,
-          status: "active",
-          current_period_end: periodEnd.toISOString(),
-        });
-      }
-
-      // Reflete o plano assinado no cadastro do cliente (Painel CEO):
-      // marca como "ativo", grava o plano, o valor mensal e a próxima cobrança.
-      const { error: clientErr } = await supabaseAdmin
-        .from("clients")
-        .update({
-          status: "ativo",
-          plano: plan?.name ?? null,
-          valor_mensal_cents: plan?.price_cents ?? null,
-          next_payment: periodEnd.toISOString().slice(0, 10),
-        })
-        .eq("user_id", updated.user_id);
-      if (clientErr) {
-        console.log("[v0] Erro ao atualizar cliente no painel:", clientErr.message);
-      }
-
-      // Cria uma notificação para o admin acompanhar a nova assinatura.
-      const payerEmail = payment?.payer?.email ?? "Um cliente";
-      await supabaseAdmin.from("notifications").insert({
-        type: "pagamento",
-        title: "Nova assinatura ativada",
-        description: `${payerEmail} assinou o plano ${plan?.name ?? ""}.`.trim(),
-      });
-    }
 
     return res.status(200).json({ received: true, status: newStatus });
   } catch (err: any) {

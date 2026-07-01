@@ -109,6 +109,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Dados do cartão ausentes." });
     }
 
+    // URL de notificação (webhook) do Mercado Pago. Sem isso, o MP não sabe
+    // para onde enviar a confirmação do pagamento e o status fica "pending".
+    const notificationUrl =
+      process.env.MERCADO_PAGO_NOTIFICATION_URL ??
+      "https://www.techdev.website/api/mercadopago/webhook";
+
     // 3) Cria a Order no Mercado Pago (com chave de idempotência)
     const orderBody = {
       type: "online" as const,
@@ -116,6 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       external_reference: externalReference,
       processing_mode: "automatic" as const,
       description: `Assinatura ${plan.name} - TechDev`,
+      notification_url: notificationUrl,
       payer: {
         email: payer.email,
         first_name: payer.firstName,
@@ -189,6 +196,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payer_email: payer.email,
       mp_order_id: String(orderAny?.id ?? ""),
       mp_payment_id: payment?.id ? String(payment.id) : null,
+      mp_external_reference: externalReference,
     });
 
     if (insertError) {
