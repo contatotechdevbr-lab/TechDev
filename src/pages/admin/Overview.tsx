@@ -20,7 +20,6 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { StatCard } from "@/components/admin/StatCard";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import {
-  clientes,
   sites,
   assinaturas,
   pagamentos,
@@ -32,6 +31,7 @@ import {
   fmtData,
   clienteById,
 } from "@/lib/mock-data";
+import { useClientes } from "@/lib/clientes-store";
 
 const chartTooltip = {
   contentStyle: {
@@ -57,6 +57,7 @@ const EmptyChart = ({ height = 280 }: { height?: number }) => (
 );
 
 const Overview = () => {
+  const clientes = useClientes();
   const faturamentoTotal = pagamentos.filter((p) => p.status === "pago").reduce((a, p) => a + p.valorCents, 0);
   const mrr = assinaturas.filter((a) => a.status === "ativa").reduce((a, s) => a + s.valorCents, 0);
   const clientesAtivos = clientes.filter((c) => c.status === "ativo").length;
