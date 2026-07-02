@@ -1,20 +1,34 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { Menu, X, LayoutDashboard, LogIn } from "lucide-react";
 
 const navLinks = [
-  { name: "Início", href: "#inicio" },
-  { name: "Serviços", href: "#servicos" },
-  { name: "Planos", href: "#planos" },
-  { name: "Sobre", href: "#sobre" },
+  { name: "Início", hash: "#inicio" },
+  { name: "Serviços", hash: "#servicos" },
+  { name: "Planos", hash: "#planos" },
+  { name: "Sobre", hash: "#sobre" },
 ];
 
 export const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user } = useAuth();
+  const { pathname } = useLocation();
+  const isHome = pathname === "/";
+
+  // Na home, faz rolagem suave até a seção. Em outras páginas (ex.: legais),
+  // deixa o Link navegar para "/#secao" e o ScrollToTop cuida da rolagem.
+  const handleNavClick = (e: React.MouseEvent, hash: string) => {
+    setIsMenuOpen(false);
+    if (isHome) {
+      e.preventDefault();
+      const id = hash.replace("#", "");
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+      window.history.replaceState(null, "", hash);
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -26,13 +40,14 @@ export const Header = () => {
 
           <nav className="hidden md:flex items-center justify-center flex-1 gap-8">
             {navLinks.map((link) => (
-              <a
+              <Link
                 key={link.name}
-                href={link.href}
+                to={`/${link.hash}`}
+                onClick={(e) => handleNavClick(e, link.hash)}
                 className="text-primary hover:text-primary/80 transition-colors duration-300 text-sm font-semibold"
               >
                 {link.name}
-              </a>
+              </Link>
             ))}
           </nav>
 
@@ -60,14 +75,14 @@ export const Header = () => {
           <div className="md:hidden py-4 border-t border-border animate-fade-in">
             <nav className="flex flex-col gap-4">
               {navLinks.map((link) => (
-                <a
+                <Link
                   key={link.name}
-                  href={link.href}
+                  to={`/${link.hash}`}
                   className="text-muted-foreground hover:text-primary transition-colors py-2"
-                  onClick={() => setIsMenuOpen(false)}
+                  onClick={(e) => handleNavClick(e, link.hash)}
                 >
                   {link.name}
-                </a>
+                </Link>
               ))}
               <Button variant="hero" className="mt-2" asChild>
                 <Link to={user ? "/dashboard" : "/auth"}>{user ? "Painel" : "Entrar"}</Link>
