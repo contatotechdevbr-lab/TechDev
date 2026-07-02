@@ -19,11 +19,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { email, password, fullName } = (req.body ?? {}) as {
-      email?: string;
-      password?: string;
-      fullName?: string;
-    };
+    const { email, password, fullName, acceptedTerms, termsVersion, privacyVersion } =
+      (req.body ?? {}) as {
+        email?: string;
+        password?: string;
+        fullName?: string;
+        acceptedTerms?: boolean;
+        termsVersion?: string;
+        privacyVersion?: string;
+      };
 
     const emailNorm = (email ?? "").trim().toLowerCase();
     if (!emailNorm || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
@@ -31,6 +35,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (!password || password.length < 6) {
       return res.status(400).json({ error: "A senha deve ter ao menos 6 caracteres." });
+    }
+    if (acceptedTerms !== true) {
+      return res.status(400).json({
+        error: "É necessário aceitar os Termos de Uso e a Política de Privacidade.",
+      });
     }
 
     // Já existe uma conta com esse e-mail?
@@ -58,6 +67,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: error?.message ?? "Não foi possível criar a conta." });
       }
       userId = data.user.id;
+    }
+
+    // Registra a aceitação dos Termos de Uso e da Política de Privacidade (LGPD).
+    try {
+      const forwardedFor = req.headers["x-forwarded-for"];
+      const ip = Array.isArray(forwardedFor)
+        ? forwardedFor[0]
+        : (forwardedFor ?? "").split(",")[0].trim() || null;
+      const userAgent =
+        (Array.isArray(req.headers["user-agent"])
+          ? req.headers["user-agent"][0]
+          : req.headers["user-agent"]) ?? null;
+      await supabaseAdmin.from("legal_acceptances").insert({
+        user_id: userId,
+        email: emailNorm,
+        terms_version: termsVersion ?? "1.0",
+        privacy_version: privacyVersion ?? "1.0",
+        ip,
+        user_agent: userAgent,
+      });
+    } catch (acceptErr) {
+      // Não bloqueia o cadastro caso o registro de auditoria falhe.
+      console.error("[v0] register legal_acceptances error:", acceptErr);
     }
 
     // Gera e persiste o código (somente o hash).
