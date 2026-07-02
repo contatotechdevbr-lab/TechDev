@@ -87,9 +87,12 @@ type Tab = "assinatura" | "projeto";
 
 export const PricingSection = () => {
   const [tab, setTab] = useState<Tab>("assinatura");
-  const [billingMode, setBillingMode] = useState<BillingMode>("upfront");
+  // Forma de pagamento escolhida por card (independente entre os planos).
+  const [billingModes, setBillingModes] = useState<Record<string, BillingMode>>({});
   const [plans, setPlans] = useState<CheckoutPlan[]>(FALLBACK_PLANS);
   const [selected, setSelected] = useState<CheckoutPlan | null>(null);
+
+  const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "upfront";
 
   useEffect(() => {
     let active = true;
@@ -165,46 +168,11 @@ export const PricingSection = () => {
             </button>
           </div>
         </div>
-        <p className="text-center text-sm text-muted-foreground mb-8">
+        <p className="text-center text-sm text-muted-foreground mb-10">
           {tab === "assinatura"
-            ? "É a mesma assinatura — você só escolhe como quer pagar."
+            ? "Escolha o plano e, no card, decida como quer pagar."
             : "Orçamento sob medida para o seu projeto, sem mensalidade fixa."}
         </p>
-
-        {/* Seletor de forma de pagamento (mesma assinatura) */}
-        {tab === "assinatura" && (
-          <div className="mb-10 flex flex-col items-center gap-3">
-            <div className="inline-flex items-center rounded-full border border-border bg-card/60 p-1">
-              <button
-                type="button"
-                onClick={() => setBillingMode("upfront")}
-                className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
-                  billingMode === "upfront"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                À vista · 20% OFF
-              </button>
-              <button
-                type="button"
-                onClick={() => setBillingMode("recurring")}
-                className={`rounded-full px-5 py-2 text-sm font-semibold transition-colors ${
-                  billingMode === "recurring"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Parcelado · 12x no cartão
-              </button>
-            </div>
-            <p className="text-center text-xs text-muted-foreground max-w-md text-pretty">
-              {billingMode === "upfront"
-                ? "Pagamento único referente aos 12 meses (PIX ou cartão), com desconto."
-                : "12 cobranças mensais automáticas no cartão de crédito (recorrência)."}
-            </p>
-          </div>
-        )}
 
         {/* Aba: Assinatura — 3 cards */}
         {tab === "assinatura" && (
@@ -213,7 +181,8 @@ export const PricingSection = () => {
               const popular = plan.is_popular;
               const discountPct = plan.discount_annual_pct ?? 20;
               const upfrontTotalCents = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
-              const isUpfront = billingMode === "upfront";
+              const mode = modeFor(plan.id);
+              const isUpfront = mode === "upfront";
               // No modo à vista mostramos o TOTAL dos 12 meses; no parcelado, o valor mensal.
               const { reais, centavos } = formatPrice(isUpfront ? upfrontTotalCents : plan.price_cents);
               return (
@@ -239,7 +208,7 @@ export const PricingSection = () => {
                     <span className="text-2xl font-bold text-primary">,{centavos}</span>
                     <span className="text-sm text-muted-foreground">{isUpfront ? " à vista" : "/mês"}</span>
                   </div>
-                  <p className="text-center text-xs text-muted-foreground mb-2">
+                  <p className="text-center text-xs text-muted-foreground mb-4">
                     {isUpfront ? (
                       <>
                         12 meses de uma vez ·{" "}
@@ -249,6 +218,41 @@ export const PricingSection = () => {
                       "12x no cartão · cobrança mensal automática"
                     )}
                   </p>
+
+                  {/* Seletor de forma de pagamento — discreto, por card */}
+                  <div
+                    role="radiogroup"
+                    aria-label={`Forma de pagamento do plano ${plan.name}`}
+                    className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-border bg-background/50 p-1"
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={isUpfront}
+                      onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "upfront" }))}
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
+                        isUpfront
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      À vista · {discountPct}% OFF
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={!isUpfront}
+                      onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "recurring" }))}
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
+                        !isUpfront
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Parcelado 12x
+                    </button>
+                  </div>
+
                   <p className="text-center text-sm text-foreground/80 mb-6">{plan.description}</p>
                   <ul className="space-y-3 mb-8 flex-1">
                     {plan.features.map((f) => (
@@ -318,7 +322,7 @@ export const PricingSection = () => {
         <CheckoutDialog
           plan={selected}
           open={!!selected}
-          billingMode={billingMode}
+          billingMode={modeFor(selected.id)}
           onOpenChange={(o) => !o && setSelected(null)}
         />
       )}
