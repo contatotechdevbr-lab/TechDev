@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Clock, Shield, Headphones } from "lucide-react";
 
-const WHATSAPP_LINK = "https://wa.me/5521987850455?text=Olá!%20Quero%20começar%20meu%20projeto%20agora!";
+const WHATSAPP_LINK = "https://wa.me/5521980386279?text=Olá!%20Quero%20começar%20meu%20projeto%20agora!";
 
 const benefits = [
   { icon: Clock, text: "Resposta em até 5 minutos" },

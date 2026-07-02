@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { LogoText } from "@/components/Logo";
 import { MessageCircle, Sparkles } from "lucide-react";
 
-const WHATSAPP_LINK = "https://wa.me/5521987850455?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
+const WHATSAPP_LINK = "https://wa.me/5521980386279?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
 
 export const HeroSection = () => {
   return (

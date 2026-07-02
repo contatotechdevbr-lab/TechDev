@@ -1,7 +1,7 @@
 import { Logo } from "@/components/Logo";
 import { Instagram, Linkedin, Mail, Phone } from "lucide-react";
 
-const WHATSAPP_LINK = "https://wa.me/5521987850455";
+const WHATSAPP_LINK = "https://wa.me/5521980386279";
 
 const socialLinks = [
   { icon: Instagram, href: "https://www.instagram.com/techdev.ofc/", label: "Instagram" },
