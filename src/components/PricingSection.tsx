@@ -91,6 +91,8 @@ export const PricingSection = () => {
   const [billingModes, setBillingModes] = useState<Record<string, BillingMode>>({});
   const [plans, setPlans] = useState<CheckoutPlan[]>(FALLBACK_PLANS);
   const [selected, setSelected] = useState<CheckoutPlan | null>(null);
+  // Card destacado pelo usuário (seleção visual premium). Permanece até escolher outro.
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "upfront";
 
@@ -185,18 +187,38 @@ export const PricingSection = () => {
               const isUpfront = mode === "upfront";
               // No modo à vista mostramos o TOTAL dos 12 meses; no parcelado, o valor mensal.
               const { reais, centavos } = formatPrice(isUpfront ? upfrontTotalCents : plan.price_cents);
+              const isHighlighted = highlightedId === plan.id;
+              const anyHighlighted = highlightedId !== null;
               return (
                 <div
                   key={plan.id}
-                  className={`relative flex flex-col rounded-2xl border p-8 animate-fade-in transition-transform hover:-translate-y-1 ${
-                    popular
-                      ? "border-primary bg-card shadow-[0_0_40px_-12px_hsl(var(--primary)/0.5)] md:scale-105"
-                      : "border-border bg-card/60"
-                  }`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isHighlighted}
+                  onClick={() => setHighlightedId(plan.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setHighlightedId(plan.id);
+                    }
+                  }}
+                  className={`relative flex flex-col rounded-2xl border p-8 animate-fade-in cursor-pointer outline-none transition-all duration-300 ease-out focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                    isHighlighted
+                      ? "z-10 scale-[1.05] -translate-y-2 border-primary bg-card shadow-[0_24px_60px_-15px_hsl(var(--primary)/0.55)] ring-1 ring-primary/40"
+                      : popular
+                        ? "border-primary bg-card shadow-[0_0_40px_-12px_hsl(var(--primary)/0.5)] hover:-translate-y-[3px] hover:scale-[1.02]"
+                        : "border-border bg-card/60 hover:-translate-y-[3px] hover:scale-[1.02] hover:border-primary/60"
+                  } ${anyHighlighted && !isHighlighted ? "!opacity-90" : "!opacity-100"}`}
                 >
-                  {popular && (
+                  {popular && !isHighlighted && (
                     <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground whitespace-nowrap">
                       Mais popular
+                    </span>
+                  )}
+                  {isHighlighted && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground whitespace-nowrap">
+                      <Check className="h-3 w-3" />
+                      Selecionado
                     </span>
                   )}
                   <h3 className="text-center text-base font-medium text-muted-foreground mb-4">
