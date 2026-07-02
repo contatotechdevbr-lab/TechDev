@@ -267,7 +267,7 @@ export const PricingSection = () => {
                     variant={popular ? "default" : "outline"}
                     onClick={() => setSelected(plan)}
                   >
-                    {isUpfront ? "Assinar à vista" : "Assinar parcelado"}
+                    {isUpfront ? "Assinar à vista" : "Assinar Recorrência"}
                   </Button>
                 </div>
               );
