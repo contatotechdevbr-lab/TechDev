@@ -1,5 +1,11 @@
+import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Instagram, Linkedin, Mail, Phone } from "lucide-react";
+
+const legalLinks = [
+  { name: "Política de Privacidade", to: "/politica-de-privacidade" },
+  { name: "Termos de Uso", to: "/termos-de-uso" },
+];
 
 const WHATSAPP_LINK = "https://wa.me/5521980386279";
 
@@ -89,10 +95,21 @@ export const Footer = () => {
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 border-t border-border text-center">
-          <p className="text-muted-foreground text-sm">
+        <div className="pt-8 border-t border-border flex flex-col items-center gap-4 md:flex-row md:justify-between">
+          <p className="text-muted-foreground text-sm text-center">
             © {new Date().getFullYear()} TechDev. Todos os direitos reservados.
           </p>
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {legalLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                {link.name}
+              </Link>
+            ))}
+          </nav>
         </div>
       </div>
     </footer>

@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
 import { MailCheck, Loader2, ArrowLeft } from "lucide-react";
 import { z } from "zod";
+import { TERMS_VERSION, PRIVACY_VERSION } from "@/config/legal";
 
 const schema = z.object({
   email: z.string().trim().email("Email inválido").max(255),
@@ -28,6 +30,7 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // Fluxo de verificação por código (OTP)
   const [otpStep, setOtpStep] = useState(false);
@@ -99,8 +102,23 @@ const Auth = () => {
       toast({ title: "Erro", description: parsed.error.errors[0].message, variant: "destructive" });
       return;
     }
+    if (!acceptedTerms) {
+      toast({
+        title: "Aceite necessário",
+        description: "Você precisa aceitar os Termos de Uso e a Política de Privacidade para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
     setBusy(true);
-    const { ok, data } = await postJson("/api/auth/register", { email, password, fullName });
+    const { ok, data } = await postJson("/api/auth/register", {
+      email,
+      password,
+      fullName,
+      acceptedTerms: true,
+      termsVersion: TERMS_VERSION,
+      privacyVersion: PRIVACY_VERSION,
+    });
     setBusy(false);
     if (!ok) {
       toast({ title: "Falha no cadastro", description: data.error ?? "Tente novamente.", variant: "destructive" });
@@ -277,7 +295,43 @@ const Auth = () => {
                       <Label htmlFor="up">Senha (mín. 8)</Label>
                       <Input id="up" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                     </div>
-                    <Button type="submit" variant="hero" className="w-full" disabled={busy}>
+
+                    <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary/40 p-3">
+                      <Checkbox
+                        id="accept-terms"
+                        checked={acceptedTerms}
+                        onCheckedChange={(v) => setAcceptedTerms(v === true)}
+                        className="mt-0.5"
+                        aria-describedby="accept-terms-label"
+                      />
+                      <Label
+                        htmlFor="accept-terms"
+                        id="accept-terms-label"
+                        className="text-sm font-normal leading-relaxed text-muted-foreground cursor-pointer"
+                      >
+                        Li e aceito os{" "}
+                        <Link
+                          to="/termos-de-uso"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Termos de Uso
+                        </Link>{" "}
+                        e a{" "}
+                        <Link
+                          to="/politica-de-privacidade"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline"
+                        >
+                          Política de Privacidade
+                        </Link>{" "}
+                        da TechDev.
+                      </Label>
+                    </div>
+
+                    <Button type="submit" variant="hero" className="w-full" disabled={busy || !acceptedTerms}>
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta"}
                     </Button>
                   </form>
