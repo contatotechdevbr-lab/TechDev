@@ -249,7 +249,7 @@ export const PricingSection = () => {
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
-                      Parcelado 12x
+                      Recorrência 12x
                     </button>
                   </div>
 
