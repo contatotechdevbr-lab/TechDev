@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { StatCard } from "@/components/admin/StatCard";
 import { ClienteFormDialog } from "@/components/admin/ClienteFormDialog";
+import { ClienteGestaoSite } from "@/components/admin/ClienteGestaoSite";
 import { useClientes, clientesStore } from "@/lib/clientes-store";
 import { pagamentos, siteById, fmtBRL, fmtData } from "@/lib/mock-data";
 import { DollarSign, Package } from "lucide-react";
@@ -116,14 +117,19 @@ const CustomerDetail = () => {
         <StatCard label="Próximo pagamento" value={fmtData(cliente.proximoPagamento)} icon={Calendar} />
       </div>
 
-      <Tabs defaultValue="pagamentos">
+      <Tabs defaultValue="gestao">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="gestao">Gestão do site</TabsTrigger>
           <TabsTrigger value="pagamentos">Pagamentos</TabsTrigger>
           <TabsTrigger value="site">Site</TabsTrigger>
           <TabsTrigger value="alteracoes">Alterações</TabsTrigger>
           <TabsTrigger value="observacoes">Observações</TabsTrigger>
           <TabsTrigger value="documentos">Documentos</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="gestao" className="mt-4">
+          <ClienteGestaoSite clientId={cliente.id} siteId={cliente.siteId} />
+        </TabsContent>
 
         <TabsContent value="pagamentos" className="mt-4">
           <Card>

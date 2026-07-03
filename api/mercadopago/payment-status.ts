@@ -1,6 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
-import { reconcilePayment, reconcilePendingForUser, type PaymentRow } from "../_lib/reconcile.js";
+import {
+  reconcilePayment,
+  reconcilePendingForUser,
+  reconcileInstallment,
+  reconcileInstallmentsForUser,
+  type PaymentRow,
+  type InstallmentRow,
+} from "../_lib/reconcile.js";
 
 /**
  * Consulta/reconcilia o status de pagamento com o Mercado Pago.
@@ -21,7 +28,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { orderId, userId } = req.body ?? {};
+    const { orderId, userId, installmentId } = req.body ?? {};
+
+    // Reconciliação de uma cobrança avulsa específica (site_installments).
+    if (installmentId) {
+      const { data: inst } = await supabaseAdmin
+        .from("site_installments")
+        .select("id, user_id, client_id, description, status, mp_order_id")
+        .eq("id", String(installmentId))
+        .maybeSingle();
+
+      if (!inst) return res.status(404).json({ error: "Cobrança não encontrada." });
+
+      const status = await reconcileInstallment(inst as InstallmentRow);
+      return res.status(200).json({ status, paid: status === "paid" });
+    }
 
     if (orderId) {
       const { data: row } = await supabaseAdmin
@@ -38,10 +59,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (userId) {
       const result = await reconcilePendingForUser(String(userId));
-      return res.status(200).json({ ...result });
+      const installments = await reconcileInstallmentsForUser(String(userId));
+      return res.status(200).json({
+        ...result,
+        installments,
+      });
     }
 
-    return res.status(400).json({ error: "Informe orderId ou userId." });
+    return res.status(400).json({ error: "Informe orderId, userId ou installmentId." });
   } catch (err: any) {
     console.log("[v0] Erro em payment-status:", err?.message);
     return res.status(500).json({ error: "Não foi possível consultar o status do pagamento." });

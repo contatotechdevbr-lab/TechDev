@@ -232,6 +232,88 @@ export async function reconcilePreapproval(preapprovalId: string): Promise<strin
   return subStatus;
 }
 
+export type InstallmentRow = {
+  id: string;
+  user_id: string | null;
+  client_id: string | null;
+  description: string | null;
+  status: string;
+  mp_order_id: string | null;
+};
+
+/**
+ * Reconcilia UMA cobrança/parcela manual (`site_installments`) com o Mercado Pago.
+ * Quando confirmada, marca como paga e registra um evento na timeline do cliente.
+ * Idempotente: se já estiver "paid", não repete efeitos.
+ */
+export async function reconcileInstallment(row: InstallmentRow): Promise<string> {
+  if (!row.mp_order_id) return row.status;
+  if (row.status === "paid") return "paid";
+
+  const info = await fetchOrderStatus(row.mp_order_id);
+  if (!info) return row.status;
+
+  const newStatus = info.mapped;
+  if (newStatus === row.status) return row.status;
+
+  const { error: upErr } = await supabaseAdmin
+    .from("site_installments")
+    .update({
+      status: newStatus,
+      paid_at: newStatus === "paid" ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id);
+  if (upErr) console.log("[v0] reconcile installment: erro ao atualizar:", upErr.message);
+
+  // Efeitos ao confirmar o pagamento: timeline + notificação ao admin.
+  if (newStatus === "paid" && row.client_id && row.user_id) {
+    await supabaseAdmin.from("site_timeline").insert({
+      client_id: row.client_id,
+      user_id: row.user_id,
+      title: "Pagamento confirmado",
+      description: `Cobrança "${row.description ?? "cobrança"}" paga com sucesso.`,
+      event_date: new Date().toISOString(),
+    });
+    await supabaseAdmin.from("notifications").insert({
+      type: "pagamento",
+      title: "Cobrança paga",
+      description: `Uma cobrança avulsa foi paga: ${row.description ?? ""}.`.trim(),
+    });
+  }
+
+  return newStatus;
+}
+
+/** Reconcilia uma cobrança pelo external_reference (usado pelo webhook). */
+export async function reconcileInstallmentByExternalRef(externalRef: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("site_installments")
+    .select("id, user_id, client_id, description, status, mp_order_id")
+    .eq("mp_external_reference", externalRef)
+    .maybeSingle();
+  if (!data) return null;
+  return reconcileInstallment(data as InstallmentRow);
+}
+
+/** Reconcilia todas as cobranças pendentes de um usuário. Retorna quantas viraram "paid". */
+export async function reconcileInstallmentsForUser(userId: string): Promise<{ checked: number; paid: number }> {
+  const { data: rows } = await supabaseAdmin
+    .from("site_installments")
+    .select("id, user_id, client_id, description, status, mp_order_id")
+    .eq("user_id", userId)
+    .in("status", ["pending", "processing"])
+    .not("mp_order_id", "is", null);
+
+  let paid = 0;
+  const list = (rows as InstallmentRow[]) ?? [];
+  for (const row of list) {
+    const status = await reconcileInstallment(row);
+    if (status === "paid") paid++;
+  }
+  return { checked: list.length, paid };
+}
+
 /** Reconcilia todos os pagamentos pendentes de um usuário. Retorna quantos viraram "paid". */
 export async function reconcilePendingForUser(userId: string): Promise<{ checked: number; paid: number }> {
   const { data: rows } = await supabaseAdmin

@@ -2,7 +2,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { createPaymentClient } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
-import { reconcilePayment, reconcilePreapproval, type PaymentRow } from "../_lib/reconcile.js";
+import {
+  reconcilePayment,
+  reconcilePreapproval,
+  reconcileInstallmentByExternalRef,
+  type PaymentRow,
+} from "../_lib/reconcile.js";
 
 /**
  * Webhook de notificações do Mercado Pago.
@@ -148,6 +153,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!row) {
+      // Pode ser uma cobrança avulsa (site_installments) em vez de assinatura.
+      if (externalReference) {
+        const instStatus = await reconcileInstallmentByExternalRef(externalReference);
+        if (instStatus) {
+          await supabaseAdmin
+            .from("webhook_events")
+            .update({ status: `installment:${instStatus}` })
+            .eq("id", eventId);
+          return res.status(200).json({ received: true, installment: instStatus });
+        }
+      }
       console.log("[v0] webhook: pagamento não encontrado para", dataId, externalReference);
       await supabaseAdmin.from("webhook_events").update({ status: "not_found" }).eq("id", eventId);
       return res.status(200).json({ received: true, matched: false });
