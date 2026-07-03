@@ -3,12 +3,12 @@ import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
-import { Menu, X, LayoutDashboard, LogIn } from "lucide-react";
+import { Menu, X, LayoutDashboard, LogIn, Globe } from "lucide-react";
 
 const navLinks = [
   { name: "Início", hash: "#inicio" },
   { name: "Serviços", hash: "#servicos" },
-  { name: "Planos", hash: "#planos" },
+  { name: "Assinaturas", hash: "#planos" },
   { name: "Sobre", hash: "#sobre" },
 ];
 
@@ -53,9 +53,14 @@ export const Header = () => {
 
           <div className="hidden md:flex items-center gap-2">
             {user ? (
-              <Button variant="hero" size="sm" asChild>
-                <Link to="/dashboard"><LayoutDashboard className="h-4 w-4 mr-1" />Painel</Link>
-              </Button>
+              <>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/meu-site"><Globe className="h-4 w-4 mr-1" />Meu Site</Link>
+                </Button>
+                <Button variant="hero" size="sm" asChild>
+                  <Link to="/dashboard"><LayoutDashboard className="h-4 w-4 mr-1" />Painel</Link>
+                </Button>
+              </>
             ) : (
               <Button variant="outline" size="sm" asChild>
                 <Link to="/auth"><LogIn className="h-4 w-4 mr-1" />Entrar</Link>
@@ -84,8 +89,17 @@ export const Header = () => {
                   {link.name}
                 </Link>
               ))}
+              {user && (
+                <Button variant="outline" className="mt-2" asChild>
+                  <Link to="/meu-site" onClick={() => setIsMenuOpen(false)}>
+                    <Globe className="h-4 w-4 mr-1" />Meu Site
+                  </Link>
+                </Button>
+              )}
               <Button variant="hero" className="mt-2" asChild>
-                <Link to={user ? "/dashboard" : "/auth"}>{user ? "Painel" : "Entrar"}</Link>
+                <Link to={user ? "/dashboard" : "/auth"} onClick={() => setIsMenuOpen(false)}>
+                  {user ? "Painel" : "Entrar"}
+                </Link>
               </Button>
             </nav>
           </div>
