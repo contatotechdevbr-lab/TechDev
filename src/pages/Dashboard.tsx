@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LogoLink } from "@/components/LogoLink";
 import {
   LogOut,
   Shield,
@@ -116,10 +117,10 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
-        <div className="container flex items-center justify-between py-4">
-          <Link to="/" className="text-xl font-bold text-gradient">
+        <div className="container mx-auto flex items-center justify-between py-4">
+          <LogoLink className="text-xl font-bold text-gradient">
             TechDev
-          </Link>
+          </LogoLink>
           <div className="flex items-center gap-2">
             {isAdmin && (
               <Button variant="outline" size="sm" asChild>
@@ -137,7 +138,7 @@ const Dashboard = () => {
         </div>
       </header>
 
-      <main className="container max-w-4xl space-y-8 py-10">
+      <main className="container mx-auto max-w-4xl space-y-8 py-10">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold sm:text-3xl">

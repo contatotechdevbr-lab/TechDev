@@ -29,6 +29,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoLink } from "@/components/LogoLink";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsMenu } from "./NotificationsMenu";
 
@@ -73,15 +74,15 @@ const navItemClass = ({ isActive }: { isActive: boolean }) =>
 
 const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => (
   <div className="flex h-full flex-col">
-    <div className="flex h-16 items-center gap-2 border-b border-border px-6">
+    <LogoLink className="h-16 border-b border-border px-6" onClick={onNavigate}>
       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15">
         <span className="font-logo text-lg font-bold text-primary">T</span>
       </div>
-      <div className="leading-tight">
+      <div className="leading-tight text-left">
         <p className="font-logo text-sm font-bold tracking-wide">TechDev</p>
         <p className="text-[11px] text-muted-foreground">Painel CEO</p>
       </div>
-    </div>
+    </LogoLink>
 
     <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
       {groups.map((group) => (

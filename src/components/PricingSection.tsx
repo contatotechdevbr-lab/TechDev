@@ -178,7 +178,7 @@ export const PricingSection = () => {
 
         {/* Aba: Assinatura — 3 cards */}
         {tab === "assinatura" && (
-          <div className="grid gap-6 md:grid-cols-3 max-w-6xl mx-auto items-stretch">
+          <div className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto items-stretch">
             {plans.map((plan) => {
               const popular = plan.is_popular;
               const discountPct = plan.discount_annual_pct ?? 20;
@@ -202,7 +202,7 @@ export const PricingSection = () => {
                       setHighlightedId(plan.id);
                     }
                   }}
-                  className={`relative flex flex-col rounded-2xl border p-8 animate-fade-in cursor-pointer outline-none transition-all duration-300 ease-out focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                  className={`relative flex w-full flex-col rounded-2xl border p-8 animate-fade-in cursor-pointer outline-none transition-all duration-300 ease-out focus-visible:ring-2 focus-visible:ring-primary/50 sm:w-[22rem] ${
                     isHighlighted
                       ? "z-10 scale-[1.05] -translate-y-2 border-primary bg-card shadow-[0_24px_60px_-15px_hsl(var(--primary)/0.55)] ring-1 ring-primary/40"
                       : popular

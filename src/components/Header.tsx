@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/Logo";
+import { LogoLink } from "@/components/LogoLink";
 import { useAuth } from "@/hooks/useAuth";
 import { Menu, X, LayoutDashboard, LogIn, Globe } from "lucide-react";
 
@@ -34,9 +34,7 @@ export const Header = () => {
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <Link to="/" aria-label="TechDev - Voltar para a página inicial" className="transition-opacity hover:opacity-80">
-            <Logo size="sm" />
-          </Link>
+          <LogoLink size="sm" />
 
           <nav className="hidden md:flex items-center justify-center flex-1 gap-8">
             {navLinks.map((link) => (

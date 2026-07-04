@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PricingSection } from "@/components/PricingSection";
+import { LogoLink } from "@/components/LogoLink";
 import { InstallmentCheckoutDialog, type ChargeToPay } from "@/components/meu-site/InstallmentCheckoutDialog";
 import { NewRequestDialog } from "@/components/meu-site/NewRequestDialog";
 import {
@@ -220,10 +221,10 @@ const MeuSite = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
-        <div className="container flex items-center justify-between py-4">
-          <Link to="/" className="text-xl font-bold text-gradient">
+        <div className="container mx-auto flex items-center justify-between py-4">
+          <LogoLink className="text-xl font-bold text-gradient">
             TechDev
-          </Link>
+          </LogoLink>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
               <Link to="/dashboard">
@@ -247,7 +248,7 @@ const MeuSite = () => {
         </div>
       </header>
 
-      <main className="container max-w-5xl space-y-8 py-10">
+      <main className="container mx-auto max-w-5xl space-y-8 py-10">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold sm:text-3xl">Meu Site</h1>

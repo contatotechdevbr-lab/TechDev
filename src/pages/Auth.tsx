@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { LogoLink } from "@/components/LogoLink";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/hooks/useAuth";
@@ -186,7 +187,7 @@ const Auth = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">
-            <Link to="/" className="text-gradient">TechDev</Link>
+            <LogoLink className="text-gradient">TechDev</LogoLink>
           </CardTitle>
           <CardDescription>
             {otpStep ? "Verifique seu e-mail" : "Entre ou crie sua conta"}
