@@ -42,7 +42,7 @@ export const Header = () => {
                 key={link.name}
                 to={`/${link.hash}`}
                 onClick={(e) => handleNavClick(e, link.hash)}
-                className="text-primary hover:text-primary/80 transition-colors duration-300 text-sm font-semibold"
+                className="relative text-sm font-medium text-muted-foreground transition-colors duration-300 hover:text-foreground after:absolute after:-bottom-1.5 after:left-0 after:h-0.5 after:w-0 after:rounded-full after:bg-primary after:transition-all after:duration-300 hover:after:w-full"
               >
                 {link.name}
               </Link>

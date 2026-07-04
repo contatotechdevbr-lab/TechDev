@@ -1,65 +1,105 @@
 import { Button } from "@/components/ui/button";
 import { LogoText } from "@/components/Logo";
-import { MessageCircle, Sparkles } from "lucide-react";
+import { MessageCircle, Sparkles, ArrowDown, Headphones, Layers, Globe } from "lucide-react";
 
 const WHATSAPP_LINK = "https://wa.me/5521980386279?text=Olá!%20Vim%20pelo%20site%20e%20gostaria%20de%20mais%20informações!";
 
+const highlights = [
+  { icon: Headphones, value: "24/7", label: "Suporte dedicado" },
+  { icon: Layers, value: "100%", label: "Sob medida" },
+  { icon: Globe, value: "Web", label: "Sites & automações" },
+];
+
 export const HeroSection = () => {
   return (
-    <section id="inicio" className="relative min-h-screen flex items-center justify-center bg-grid overflow-hidden">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-transparent" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
-      
-      <div className="container relative z-10 px-4 pt-0">
-        <div className="text-center max-w-4xl mx-auto">
+    <section
+      id="inicio"
+      className="relative flex min-h-screen items-center justify-center overflow-hidden"
+    >
+      {/* Background layers */}
+      <div className="absolute inset-0 bg-grid" aria-hidden />
+      <div
+        className="absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]"
+        aria-hidden
+      />
+      <div
+        className="absolute bottom-0 right-[10%] h-72 w-72 rounded-full bg-accent/15 blur-[100px]"
+        aria-hidden
+      />
+      <div
+        className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-b from-transparent to-background"
+        aria-hidden
+      />
+
+      <div className="container relative z-10 px-4 py-24">
+        <div className="mx-auto max-w-4xl text-center">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary border border-primary/30 mb-8 animate-fade-in">
+          <div className="mb-10 inline-flex animate-fade-in items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 backdrop-blur">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm font-medium text-subtle-foreground">
               Transforme sua ideia em realidade digital
             </span>
           </div>
 
-          {/* Logo Title */}
+          {/* Logo */}
           <div className="mb-8 animate-float">
             <LogoText />
           </div>
 
-          {/* Subtitle */}
-          <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-foreground mb-6 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+          {/* Headline */}
+          <h1
+            className="mb-6 animate-fade-in text-balance text-4xl font-extrabold leading-[1.1] text-foreground md:text-5xl lg:text-6xl"
+            style={{ animationDelay: "0.15s" }}
+          >
             A solução para <span className="text-gradient">turbinar suas vendas</span>
           </h1>
 
-          <p className="text-lg md:text-xl text-subtle-foreground mb-10 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            Melhoramos seu atendimento para você ganhar tempo, vender mais e atender melhor seus clientes.
+          <p
+            className="mx-auto mb-10 max-w-2xl animate-fade-in text-pretty text-lg leading-relaxed text-muted-foreground md:text-xl"
+            style={{ animationDelay: "0.3s" }}
+          >
+            Melhoramos seu atendimento para você ganhar tempo, vender mais e atender melhor
+            seus clientes.
           </p>
 
-          {/* CTA Button */}
-          <div className="flex justify-center animate-fade-in" style={{ animationDelay: "0.6s" }}>
+          {/* CTAs */}
+          <div
+            className="flex animate-fade-in flex-col items-center justify-center gap-3 sm:flex-row"
+            style={{ animationDelay: "0.45s" }}
+          >
             <Button variant="hero" size="lg" asChild>
               <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
                 <MessageCircle className="mr-2 h-5 w-5" />
                 Fale Conosco
               </a>
             </Button>
+            <Button variant="outline" size="lg" asChild>
+              <a href="#servicos">
+                Ver serviços
+                <ArrowDown className="ml-1 h-4 w-4" />
+              </a>
+            </Button>
           </div>
 
-          {/* Diferenciais (promessas de serviço, sem métricas fictícias) */}
-          <div className="mt-16 flex flex-wrap justify-center gap-8 text-muted-foreground animate-fade-in" style={{ animationDelay: "0.8s" }}>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-primary">24/7</span>
-              <span className="text-sm">Suporte<br />Dedicado</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-primary">100%</span>
-              <span className="text-sm">Sob<br />Medida</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-primary">Web</span>
-              <span className="text-sm">Sites &amp;<br />Automações</span>
-            </div>
+          {/* Trust highlights */}
+          <div
+            className="mx-auto mt-16 grid max-w-2xl animate-fade-in grid-cols-1 gap-4 sm:grid-cols-3"
+            style={{ animationDelay: "0.6s" }}
+          >
+            {highlights.map((item) => (
+              <div
+                key={item.label}
+                className="card-sheen flex items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card/50 px-4 py-4 backdrop-blur"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                  <item.icon className="h-5 w-5" />
+                </span>
+                <div className="text-left">
+                  <div className="text-xl font-bold text-foreground">{item.value}</div>
+                  <div className="text-xs text-muted-foreground">{item.label}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
