@@ -13,6 +13,16 @@ dist-ssr
 *.local
 .v0
 
+# Segredos de ambiente — NUNCA versionar segredos de servidor.
+# Os segredos reais (SERVICE_ROLE, MERCADO_PAGO_ACCESS_TOKEN, RESEND_API_KEY, etc.)
+# ficam nas Environment Variables da Vercel e em *.local (ja ignorados acima).
+# O .env versionado contem APENAS chaves publicas VITE_ (anon/publishable),
+# necessarias no build do frontend e protegidas por RLS no Supabase.
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
