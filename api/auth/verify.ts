@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
 import { findUserByEmail } from "../_lib/auth-users.js";
 import { codeMatches, OTP_MAX_ATTEMPTS } from "../_lib/otp.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * POST /api/auth/verify
@@ -12,6 +13,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
+
+  // Rate limiting: mitiga brute force do código OTP por IP (além do limite por conta).
+  if (rateLimit(req, res, { key: "auth-verify", limit: 20, windowMs: 10 * 60_000 })) return;
 
   try {
     const { email, code } = (req.body ?? {}) as { email?: string; code?: string };

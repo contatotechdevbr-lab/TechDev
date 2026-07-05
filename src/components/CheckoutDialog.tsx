@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, preloadMercadoPago } from "@/lib/mercadopago";
+import { apiFetch } from "@/lib/api-client";
 
 export type CheckoutPlan = {
   id: string;
@@ -170,12 +171,10 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
       setLoading(true);
       try {
         const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");
-        const res = await fetch("/api/mercadopago/create-preapproval", {
+        const res = await apiFetch("/api/mercadopago/create-preapproval", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             planId: plan.id,
-            userId: user.id,
             payer: { email: user.email, firstName, lastName: rest.join(" ") || "TechDev" },
           }),
         });
@@ -277,12 +276,10 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
       const deviceId = await getDeviceId();
 
       // Chama o backend (Vercel Function) para criar a Order
-      const res = await fetch("/api/mercadopago/create-order", {
+      const res = await apiFetch("/api/mercadopago/create-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planId: plan.id,
-          userId: user.id,
           method,
           payer,
           card: cardPayload,
@@ -324,9 +321,8 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
         if (data.orderId) {
           for (let i = 0; i < 4 && !confirmed; i++) {
             try {
-              const st = await fetch("/api/mercadopago/payment-status", {
+              const st = await apiFetch("/api/mercadopago/payment-status", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ orderId: data.orderId }),
               });
               const j = await st.json().catch(() => ({}));

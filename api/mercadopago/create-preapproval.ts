@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "node:crypto";
 import { createPreapprovalViaApi, isSandbox } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import { getAuthedUser } from "../_lib/require-auth.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * Cria uma assinatura RECORRENTE (Preapproval) no Mercado Pago.
@@ -19,8 +21,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
+  if (rateLimit(req, res, { key: "create-preapproval", limit: 15, windowMs: 60_000 })) return;
+
   try {
-    const { planId, userId, payer } = req.body ?? {};
+    const authedUser = await getAuthedUser(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: "Autenticação necessária." });
+    }
+    const userId = authedUser.id;
+
+    const { planId, payer } = req.body ?? {};
 
     if (!planId || !payer?.email) {
       return res.status(400).json({ error: "Dados incompletos para criar a assinatura." });

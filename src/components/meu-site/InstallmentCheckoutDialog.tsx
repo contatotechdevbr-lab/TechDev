@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, preloadMercadoPago } from "@/lib/mercadopago";
+import { apiFetch } from "@/lib/api-client";
 
 export type ChargeToPay = {
   id: string;
@@ -123,12 +124,10 @@ export const InstallmentCheckoutDialog = ({ charge, open, onOpenChange, onPaid }
 
       const deviceId = await getDeviceId();
 
-      const res = await fetch("/api/mercadopago/pay-installment", {
+      const res = await apiFetch("/api/mercadopago/pay-installment", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           installmentId: charge.id,
-          userId: user.id,
           method,
           payer,
           card: cardPayload,
@@ -158,9 +157,8 @@ export const InstallmentCheckoutDialog = ({ charge, open, onOpenChange, onPaid }
         let confirmed = false;
         for (let i = 0; i < 4 && !confirmed; i++) {
           try {
-            const st = await fetch("/api/mercadopago/payment-status", {
+            const st = await apiFetch("/api/mercadopago/payment-status", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ installmentId: charge.id }),
             });
             const j = await st.json().catch(() => ({}));

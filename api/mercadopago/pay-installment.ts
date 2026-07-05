@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "node:crypto";
 import { createOrderViaApi, isSandbox } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import { getAuthedUser } from "../_lib/require-auth.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * Cria uma Order no Mercado Pago para pagar uma COBRANÇA/PARCELA manual
@@ -16,10 +18,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
+  if (rateLimit(req, res, { key: "pay-installment", limit: 15, windowMs: 60_000 })) return;
+
   try {
+    const authedUser = await getAuthedUser(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: "Autenticação necessária." });
+    }
+    const userId = authedUser.id;
+
     const {
       installmentId,
-      userId,
       method, // "pix" | "card"
       payer,
       card, // { token, paymentMethodId } quando method === "card"
@@ -41,8 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (instError || !inst) {
       return res.status(404).json({ error: "Cobrança não encontrada." });
     }
-    // Só o dono da cobrança pode pagá-la.
-    if (userId && inst.user_id && userId !== inst.user_id) {
+    // Só o dono da cobrança pode pagá-la (autorização no servidor).
+    if (inst.user_id !== userId) {
       return res.status(403).json({ error: "Esta cobrança não pertence ao usuário." });
     }
     if (inst.status === "paid") {

@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import { getAuthedUser } from "../_lib/require-auth.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 import {
   reconcilePayment,
   reconcilePendingForUser,
@@ -27,8 +29,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
+  if (rateLimit(req, res, { key: "payment-status", limit: 60, windowMs: 60_000 })) return;
+
   try {
-    const { orderId, userId, installmentId } = req.body ?? {};
+    // Autenticação obrigatória: só o próprio usuário pode consultar/reconciliar
+    // seus pagamentos. O id vem do token, nunca do corpo (evita IDOR).
+    const authedUser = await getAuthedUser(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: "Autenticação necessária." });
+    }
+    const authUserId = authedUser.id;
+
+    const { orderId, installmentId } = req.body ?? {};
 
     // Reconciliação de uma cobrança avulsa específica (site_installments).
     if (installmentId) {
@@ -39,6 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .maybeSingle();
 
       if (!inst) return res.status(404).json({ error: "Cobrança não encontrada." });
+      if (inst.user_id !== authUserId) {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
 
       const status = await reconcileInstallment(inst as InstallmentRow);
       return res.status(200).json({ status, paid: status === "paid" });
@@ -52,21 +67,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .maybeSingle();
 
       if (!row) return res.status(404).json({ error: "Pagamento não encontrado." });
+      if (row.user_id !== authUserId) {
+        return res.status(403).json({ error: "Acesso negado." });
+      }
 
       const status = await reconcilePayment(row as PaymentRow);
       return res.status(200).json({ status, paid: status === "paid" });
     }
 
-    if (userId) {
-      const result = await reconcilePendingForUser(String(userId));
-      const installments = await reconcileInstallmentsForUser(String(userId));
-      return res.status(200).json({
-        ...result,
-        installments,
-      });
-    }
-
-    return res.status(400).json({ error: "Informe orderId, userId ou installmentId." });
+    // Sem orderId/installmentId: reconcilia os pendentes do PRÓPRIO usuário.
+    const result = await reconcilePendingForUser(authUserId);
+    const installments = await reconcileInstallmentsForUser(authUserId);
+    return res.status(200).json({ ...result, installments });
   } catch (err: any) {
     console.log("[v0] Erro em payment-status:", err?.message);
     return res.status(500).json({ error: "Não foi possível consultar o status do pagamento." });

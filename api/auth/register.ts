@@ -7,6 +7,7 @@ import {
   sendOtpEmail,
   OTP_TTL_MINUTES,
 } from "../_lib/otp.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * POST /api/auth/register
@@ -17,6 +18,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
+
+  // Rate limiting: mitiga criação massiva de contas e abuso de envio de e-mail.
+  if (rateLimit(req, res, { key: "auth-register", limit: 8, windowMs: 10 * 60_000 })) return;
 
   try {
     const { email, password, fullName, acceptedTerms, termsVersion, privacyVersion } =

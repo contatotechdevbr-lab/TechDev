@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+  import { supabase } from "@/integrations/supabase/client";
+  import { apiFetch } from "@/lib/api-client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -96,10 +97,9 @@ const Dashboard = () => {
     if (!user) return;
     setSyncing(true);
     try {
-      await fetch("/api/mercadopago/payment-status", {
+      await apiFetch("/api/mercadopago/payment-status", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({}),
       }).catch(() => {});
       await loadData();
     } finally {

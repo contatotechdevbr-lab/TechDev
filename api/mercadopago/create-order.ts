@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "node:crypto";
 import { createOrderViaApi, isSandbox } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import { getAuthedUser } from "../_lib/require-auth.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * Cria uma Order no Mercado Pago (Checkout Transparente / Orders API).
@@ -19,10 +21,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
+  // Rate limiting: mitiga abuso/DoS na criação de pagamentos.
+  if (rateLimit(req, res, { key: "create-order", limit: 15, windowMs: 60_000 })) return;
+
   try {
+    // Autenticação obrigatória: o usuário é derivado do token (nunca do corpo),
+    // evitando IDOR (um usuário criar pagamento em nome de outro).
+    const authedUser = await getAuthedUser(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: "Autenticação necessária." });
+    }
+    const userId = authedUser.id;
+
     const {
       planId,
-      userId,
       method, // "pix" | "card"
       payer,
       card, // { token, installments, paymentMethodId } quando method === "card"

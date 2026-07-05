@@ -8,6 +8,7 @@ import {
   OTP_TTL_MINUTES,
   OTP_RESEND_COOLDOWN_SECONDS,
 } from "../_lib/otp.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * POST /api/auth/resend
@@ -17,6 +18,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
+
+  // Rate limiting: mitiga abuso de reenvio de e-mail (spam/DoS) por IP.
+  if (rateLimit(req, res, { key: "auth-resend", limit: 10, windowMs: 10 * 60_000 })) return;
 
   try {
     const { email } = (req.body ?? {}) as { email?: string };

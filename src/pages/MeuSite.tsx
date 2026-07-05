@@ -11,6 +11,7 @@ import { PricingSection } from "@/components/PricingSection";
 import { LogoLink } from "@/components/LogoLink";
 import { InstallmentCheckoutDialog, type ChargeToPay } from "@/components/meu-site/InstallmentCheckoutDialog";
 import { NewRequestDialog } from "@/components/meu-site/NewRequestDialog";
+import { apiFetch } from "@/lib/api-client";
 import {
   LogOut,
   Shield,
@@ -199,10 +200,9 @@ const MeuSite = () => {
     if (!user) return;
     setSyncing(true);
     try {
-      await fetch("/api/mercadopago/payment-status", {
+      await apiFetch("/api/mercadopago/payment-status", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({}),
       }).catch(() => {});
       await loadData();
     } finally {
