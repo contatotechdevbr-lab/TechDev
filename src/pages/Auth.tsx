@@ -172,10 +172,16 @@ const Auth = () => {
     // OAuth nativo do Supabase (PKCE). O provider Google precisa estar
     // habilitado no painel do Supabase. Após o retorno, o TermsGate garante
     // o aceite dos Termos de Uso e da Política de Privacidade.
+    //
+    // Em produção sempre voltamos para o domínio oficial (www.techdev.website),
+    // nunca para a URL interna *.vercel.app. Em localhost mantemos a origem
+    // atual para o fluxo de desenvolvimento funcionar.
+    const isLocalhost = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+    const origin = isLocalhost ? window.location.origin : "https://www.techdev.website";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/dashboard`,
+        redirectTo: `${origin}/dashboard`,
         queryParams: { prompt: "select_account" },
       },
     });

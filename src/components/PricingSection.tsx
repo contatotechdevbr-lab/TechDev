@@ -94,7 +94,8 @@ export const PricingSection = () => {
   // Card destacado pelo usuário (seleção visual premium). Permanece até escolher outro.
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-  const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "upfront";
+  // Padrão: recorrência (parcelamento) sempre aparece primeiro, nunca à vista.
+  const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";
 
   useEffect(() => {
     let active = true;
@@ -250,19 +251,6 @@ export const PricingSection = () => {
                     <button
                       type="button"
                       role="radio"
-                      aria-checked={isUpfront}
-                      onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "upfront" }))}
-                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
-                        isUpfront
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      À vista · {discountPct}% OFF
-                    </button>
-                    <button
-                      type="button"
-                      role="radio"
                       aria-checked={!isUpfront}
                       onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "recurring" }))}
                       className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
@@ -272,6 +260,19 @@ export const PricingSection = () => {
                       }`}
                     >
                       Recorrência 12x
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={isUpfront}
+                      onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "upfront" }))}
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
+                        isUpfront
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      À vista · {discountPct}% OFF
                     </button>
                   </div>
 

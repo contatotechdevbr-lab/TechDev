@@ -37,7 +37,7 @@ type Props = {
 
 type PixData = { qrCode?: string; qrCodeBase64?: string; ticketUrl?: string };
 
-export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfront" }: Props) => {
+export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "recurring" }: Props) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isRecurring = billingMode === "recurring";
