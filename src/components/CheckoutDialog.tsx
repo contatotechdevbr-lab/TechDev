@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Check, Loader2, ShieldCheck, QrCode, CreditCard, Copy } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, preloadMercadoPago } from "@/lib/mercadopago";
@@ -79,19 +78,26 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
   }, [open]);
 
   // Ao abrir, pré-preenche CPF e endereço com os dados já salvos no perfil.
+  // O CPF é descriptografado no servidor (rota autenticada), nunca lido em
+  // texto puro direto do banco.
   useEffect(() => {
     if (!open || !user) return;
     void (async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("cpf, address_city, address_state, address_zip_code")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (data) {
+      try {
+        const res = await apiFetch("/api/profile/billing", { method: "GET" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          cpf?: string;
+          addressCity?: string;
+          addressState?: string;
+          addressZipCode?: string;
+        };
         if (data.cpf) setCpf((prev) => prev || data.cpf!);
-        if (data.address_city) setCity((prev) => prev || data.address_city!);
-        if (data.address_state) setUf((prev) => prev || data.address_state!);
-        if (data.address_zip_code) setZipCode((prev) => prev || data.address_zip_code!);
+        if (data.addressCity) setCity((prev) => prev || data.addressCity!);
+        if (data.addressState) setUf((prev) => prev || data.addressState!);
+        if (data.addressZipCode) setZipCode((prev) => prev || data.addressZipCode!);
+      } catch {
+        /* silencioso: prefill é conveniência */
       }
     })();
   }, [open, user]);
@@ -229,16 +235,17 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "upfron
       const ufValue = uf.trim().toUpperCase().slice(0, 2);
       const zipValue = zipCode.replace(/\D/g, "");
 
-      // Salva CPF e endereço no perfil (reutilizados em contratações futuras)
-      await supabase
-        .from("profiles")
-        .update({
+      // Salva CPF (criptografado no servidor) e endereço no perfil, para
+      // reutilização em contratações futuras.
+      await apiFetch("/api/profile/billing", {
+        method: "POST",
+        body: JSON.stringify({
           cpf,
-          address_city: cityValue,
-          address_state: ufValue,
-          address_zip_code: zipValue,
-        })
-        .eq("id", user.id);
+          addressCity: cityValue,
+          addressState: ufValue,
+          addressZipCode: zipValue,
+        }),
+      });
 
       // Monta o payload do pagador
       const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");

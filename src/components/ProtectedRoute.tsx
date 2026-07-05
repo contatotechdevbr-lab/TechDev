@@ -2,6 +2,8 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { TermsGate } from "@/components/TermsGate";
+import { AdminMfaGate } from "@/components/admin/AdminMfaGate";
 
 export const ProtectedRoute = ({
   children,
@@ -59,5 +61,11 @@ export const ProtectedRoute = ({
     );
   }
 
-  return <>{children}</>;
+  // Todo acesso interno exige aceite dos termos na versão atual.
+  // O painel admin exige, adicionalmente, verificação em duas etapas (2FA).
+  return (
+    <TermsGate>
+      {requireAdmin ? <AdminMfaGate>{children}</AdminMfaGate> : children}
+    </TermsGate>
+  );
 };

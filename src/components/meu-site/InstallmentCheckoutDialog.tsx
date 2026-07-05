@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2, QrCode, CreditCard, Copy, ShieldCheck } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, preloadMercadoPago } from "@/lib/mercadopago";
@@ -57,12 +56,18 @@ export const InstallmentCheckoutDialog = ({ charge, open, onOpenChange, onPaid }
     if (open && isMercadoPagoConfigured()) void preloadMercadoPago();
   }, [open]);
 
-  // Pré-preenche o CPF a partir do perfil.
+  // Pré-preenche o CPF a partir do perfil (descriptografado no servidor).
   useEffect(() => {
     if (!open || !user) return;
     void (async () => {
-      const { data } = await supabase.from("profiles").select("cpf").eq("id", user.id).maybeSingle();
-      if (data?.cpf) setCpf((prev) => prev || data.cpf!);
+      try {
+        const res = await apiFetch("/api/profile/billing", { method: "GET" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { cpf?: string };
+        if (data.cpf) setCpf((prev) => prev || data.cpf!);
+      } catch {
+        /* silencioso */
+      }
     })();
   }, [open, user]);
 

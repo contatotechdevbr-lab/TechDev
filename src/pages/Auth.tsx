@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { LogoLink } from "@/components/LogoLink";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,16 +169,24 @@ const Auth = () => {
 
   const handleGoogle = async () => {
     setBusy(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: `${window.location.origin}/dashboard`,
+    // OAuth nativo do Supabase (PKCE). O provider Google precisa estar
+    // habilitado no painel do Supabase. Após o retorno, o TermsGate garante
+    // o aceite dos Termos de Uso e da Política de Privacidade.
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+        queryParams: { prompt: "select_account" },
+      },
     });
-    if (result.error) {
+    if (error) {
       setBusy(false);
-      toast({ title: "Erro Google", description: String(result.error), variant: "destructive" });
-      return;
+      const desc = /provider is not enabled|not enabled/i.test(error.message)
+        ? "O login com Google ainda não está ativo. Use e-mail e senha por enquanto."
+        : error.message;
+      toast({ title: "Não foi possível entrar com o Google", description: desc, variant: "destructive" });
     }
-    if (result.redirected) return;
-    navigate("/dashboard");
+    // Em caso de sucesso, o navegador é redirecionado ao Google.
   };
 
   return (
