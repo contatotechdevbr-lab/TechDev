@@ -20,6 +20,7 @@ import {
   CreditCard,
   RefreshCw,
   FolderKanban,
+  Sparkles,
   BarChart3,
   UserCog,
   Settings,
@@ -46,6 +47,7 @@ const groups = [
       { to: "/admin/planos", icon: Package, label: "Planos" },
       { to: "/admin/assinaturas", icon: RefreshCw, label: "Assinaturas" },
       { to: "/admin/projetos", icon: FolderKanban, label: "Projetos" },
+      { to: "/admin/projetos-personalizados", icon: Sparkles, label: "Projetos personalizados" },
     ],
   },
   {

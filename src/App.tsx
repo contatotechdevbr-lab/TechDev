@@ -22,6 +22,7 @@ import Sites from "./pages/admin/Sites";
 import Financeiro from "./pages/admin/Financeiro";
 import Assinaturas from "./pages/admin/Assinaturas";
 import Projetos from "./pages/admin/Projetos";
+import ProjetosPersonalizados from "./pages/admin/ProjetosPersonalizados";
 import Usuarios from "./pages/admin/Usuarios";
 import Relatorios from "./pages/admin/Relatorios";
 import Configuracoes from "./pages/admin/Configuracoes";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="sites" element={<Sites />} />
               <Route path="assinaturas" element={<Assinaturas />} />
               <Route path="projetos" element={<Projetos />} />
+              <Route path="projetos-personalizados" element={<ProjetosPersonalizados />} />
               <Route path="financeiro" element={<Financeiro />} />
               <Route path="relatorios" element={<Relatorios />} />
               <Route path="usuarios" element={<Usuarios />} />

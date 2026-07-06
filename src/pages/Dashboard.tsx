@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LogoLink } from "@/components/LogoLink";
+import { CustomProjectCheckoutDialog, type CustomProjectToPay } from "@/components/CustomProjectCheckoutDialog";
 import {
   LogOut,
   Shield,
@@ -17,6 +18,7 @@ import {
   XCircle,
   Sparkles,
   CalendarClock,
+  FolderKanban,
 } from "lucide-react";
 
 type Sub = {
@@ -34,6 +36,14 @@ type Payment = {
   payment_method: string | null;
   paid_at: string | null;
   created_at: string;
+};
+
+type CustomProject = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  max_installments: number;
 };
 
 const fmtBRL = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -70,11 +80,14 @@ const Dashboard = () => {
   const { user, isAdmin, signOut } = useAuth();
   const [subs, setSubs] = useState<Sub[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [projects, setProjects] = useState<CustomProject[]>([]);
+  const [projectPaid, setProjectPaid] = useState<Record<string, string>>({});
+  const [payProject, setPayProject] = useState<CustomProjectToPay | null>(null);
   const [syncing, setSyncing] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!user) return;
-    const [{ data: subsData }, { data: payData }] = await Promise.all([
+    const [{ data: subsData }, { data: payData }, { data: projData }] = await Promise.all([
       supabase
         .from("subscriptions")
         .select("id, status, current_period_end, plans(name, price_cents), custom_plans(name, price_cents)")
@@ -82,13 +95,28 @@ const Dashboard = () => {
         .order("created_at", { ascending: false }),
       supabase
         .from("payments")
-        .select("id, amount_cents, status, payment_method, paid_at, created_at")
+        .select("id, amount_cents, status, payment_method, paid_at, created_at, custom_plan_id")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(20),
+      supabase
+        .from("custom_plans")
+        .select("id, name, description, price_cents, max_installments")
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .order("created_at", { ascending: false }),
     ]);
     setSubs((subsData as any) ?? []);
     setPayments((payData as Payment[]) ?? []);
+    setProjects((projData as CustomProject[]) ?? []);
+
+    // Mapa de status de pagamento por projeto ("paid" tem prioridade).
+    const statusMap: Record<string, string> = {};
+    ((payData as any[]) ?? []).forEach((p) => {
+      if (!p.custom_plan_id) return;
+      if (p.status === "paid" || !statusMap[p.custom_plan_id]) statusMap[p.custom_plan_id] = p.status;
+    });
+    setProjectPaid(statusMap);
   }, [user]);
 
   // Ao abrir o painel, reconcilia pagamentos pendentes com o Mercado Pago
@@ -193,6 +221,65 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
+        {/* Projetos personalizados a pagar */}
+        {projects.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FolderKanban className="h-5 w-5 text-primary" />
+                Seus projetos
+              </CardTitle>
+              <CardDescription>Projetos personalizados criados para você</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {projects.map((proj) => {
+                const status = projectPaid[proj.id];
+                const isPaid = status === "paid";
+                const isPending = status === "pending";
+                return (
+                  <div
+                    key={proj.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-secondary/20 p-4"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold">{proj.name}</div>
+                      {proj.description && (
+                        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{proj.description}</p>
+                      )}
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {fmtBRL(proj.price_cents)}
+                        {proj.max_installments > 1 ? ` · em até ${proj.max_installments}x no cartão` : ""}
+                      </div>
+                    </div>
+                    {isPaid ? (
+                      <Badge className="border border-emerald-500/30 bg-emerald-500/15 text-emerald-600">
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                        Pago
+                      </Badge>
+                    ) : (
+                      <Button
+                        variant="hero"
+                        size="sm"
+                        onClick={() =>
+                          setPayProject({
+                            id: proj.id,
+                            name: proj.name,
+                            price_cents: proj.price_cents,
+                            max_installments: proj.max_installments,
+                          })
+                        }
+                      >
+                        <CreditCard className="mr-1 h-4 w-4" />
+                        {isPending ? "Concluir pagamento" : "Pagar projeto"}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Histórico de pagamentos */}
         <Card>
           <CardHeader>
@@ -229,6 +316,15 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </main>
+
+      <CustomProjectCheckoutDialog
+        project={payProject}
+        open={payProject !== null}
+        onOpenChange={(o) => {
+          if (!o) setPayProject(null);
+        }}
+        onPaid={syncAndLoad}
+      />
     </div>
   );
 };

@@ -16,6 +16,7 @@ export type PaymentRow = {
   id: string;
   user_id: string | null;
   plan_id: string | null;
+  custom_plan_id?: string | null;
   status: string;
   mp_order_id: string | null;
   payer_email: string | null;
@@ -90,9 +91,31 @@ export async function reconcilePayment(row: PaymentRow): Promise<string> {
   // Efeitos colaterais só quando vira "paid".
   if (newStatus === "paid" && row.user_id && row.plan_id) {
     await applyPaidSideEffects(row.user_id, row.plan_id, row.payer_email);
+  } else if (newStatus === "paid" && row.custom_plan_id) {
+    // Pagamento de um PROJETO PERSONALIZADO (one-time). Não gera assinatura;
+    // apenas registra a confirmação e notifica o admin.
+    await applyCustomProjectPaidSideEffects(row.custom_plan_id, row.payer_email);
   }
 
   return newStatus;
+}
+
+/** Notifica o admin quando um projeto personalizado é pago. */
+export async function applyCustomProjectPaidSideEffects(
+  customPlanId: string,
+  payerEmail: string | null,
+): Promise<void> {
+  const { data: cp } = await supabaseAdmin
+    .from("custom_plans")
+    .select("name")
+    .eq("id", customPlanId)
+    .maybeSingle();
+
+  await supabaseAdmin.from("notifications").insert({
+    type: "pagamento",
+    title: "Projeto personalizado pago",
+    description: `${payerEmail ?? "Um cliente"} pagou o projeto "${cp?.name ?? "personalizado"}".`.trim(),
+  });
 }
 
 /** Ativa assinatura, atualiza o cadastro do cliente e notifica o admin. */
@@ -318,7 +341,7 @@ export async function reconcileInstallmentsForUser(userId: string): Promise<{ ch
 export async function reconcilePendingForUser(userId: string): Promise<{ checked: number; paid: number }> {
   const { data: rows } = await supabaseAdmin
     .from("payments")
-    .select("id, user_id, plan_id, status, mp_order_id, payer_email")
+    .select("id, user_id, plan_id, custom_plan_id, status, mp_order_id, payer_email")
     .eq("user_id", userId)
     .eq("status", "pending")
     .not("mp_order_id", "is", null);

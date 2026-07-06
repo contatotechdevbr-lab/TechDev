@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (orderId) {
       const { data: row } = await supabaseAdmin
         .from("payments")
-        .select("id, user_id, plan_id, status, mp_order_id, payer_email")
+        .select("id, user_id, plan_id, custom_plan_id, status, mp_order_id, payer_email")
         .eq("mp_order_id", String(orderId))
         .maybeSingle();
 
