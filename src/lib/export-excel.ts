@@ -1,4 +1,3 @@
-import * as XLSX from "xlsx";
 import {
   clientes as clientesSeed,
   sites,
@@ -10,7 +9,9 @@ import { financasStore, clienteInfoByUserId, receitaPagaCents, mrrCents } from "
 const reais = (cents: number) => Number((cents / 100).toFixed(2));
 
 // Gera o arquivo Excel (.xlsx) com 5 abas: Clientes, Faturamento, Assinaturas, Sites e Relatórios.
-export const exportarOperacoes = () => {
+// A lib `xlsx` (~500KB) é carregada sob demanda, só quando a exportação é acionada.
+export const exportarOperacoes = async () => {
+  const XLSX = await import("xlsx");
   const clientes = clientesStore.getSnapshot() ?? clientesSeed;
   const { pagamentos, assinaturas } = financasStore.getSnapshot();
 

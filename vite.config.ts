@@ -16,4 +16,17 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // Separa dependências grandes em chunks próprios para melhorar o cache do
+    // navegador entre deploys e evitar um único bundle gigante.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          charts: ["recharts"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 900,
+  },
 }));

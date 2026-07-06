@@ -41,9 +41,13 @@ export default function Relatorios() {
   const faturamentoMensal = faturamentoPorMes(pagamentos, mesesPeriodo);
   const distribuicaoPlanos = distribuicaoPorPlano(assinaturas);
 
-  const exportar = () => {
-    exportarOperacoes();
-    toast({ title: "Relatório exportado", description: "Arquivo Excel gerado com sucesso." });
+  const exportar = async () => {
+    try {
+      await exportarOperacoes();
+      toast({ title: "Relatório exportado", description: "Arquivo Excel gerado com sucesso." });
+    } catch {
+      toast({ title: "Erro ao exportar", description: "Não foi possível gerar o arquivo.", variant: "destructive" });
+    }
   };
 
   return (

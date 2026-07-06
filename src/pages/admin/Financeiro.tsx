@@ -67,9 +67,13 @@ const Financeiro = () => {
     [pagamentos, search, statusFiltro]
   );
 
-  const exportar = () => {
-    exportarOperacoes();
-    toast({ title: "Exportação concluída", description: "Arquivo Excel gerado com 5 abas." });
+  const exportar = async () => {
+    try {
+      await exportarOperacoes();
+      toast({ title: "Exportação concluída", description: "Arquivo Excel gerado com 5 abas." });
+    } catch {
+      toast({ title: "Erro ao exportar", description: "Não foi possível gerar o arquivo.", variant: "destructive" });
+    }
   };
 
   return (
