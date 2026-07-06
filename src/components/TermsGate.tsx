@@ -12,6 +12,11 @@ import { TERMS_VERSION, PRIVACY_VERSION } from "@/config/legal";
 
 type Status = "checking" | "accepted" | "needed";
 
+// Cache em memória (por sessão de navegação): usuários que já tiveram o aceite
+// da versão atual confirmado. Evita reconsultar o banco e mostrar "Carregando..."
+// a cada navegação entre /meu-site e /dashboard.
+const acceptedCache = new Set<string>();
+
 /**
  * Garante que todo usuário autenticado tenha aceitado a versão ATUAL dos Termos
  * de Uso e da Política de Privacidade antes de acessar áreas internas.
@@ -21,7 +26,11 @@ type Status = "checking" | "accepted" | "needed";
  */
 export const TermsGate = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
-  const [status, setStatus] = useState<Status>("checking");
+  // Se já confirmamos o aceite nesta sessão, começa direto como "accepted"
+  // (sem loader nem nova consulta).
+  const [status, setStatus] = useState<Status>(() =>
+    user && acceptedCache.has(user.id) ? "accepted" : "checking",
+  );
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -29,6 +38,12 @@ export const TermsGate = ({ children }: { children: React.ReactNode }) => {
     let active = true;
     if (!user) {
       setStatus("checking");
+      return;
+    }
+
+    // Cache hit: não reconsulta o banco.
+    if (acceptedCache.has(user.id)) {
+      setStatus("accepted");
       return;
     }
 
@@ -47,6 +62,7 @@ export const TermsGate = ({ children }: { children: React.ReactNode }) => {
           setStatus("accepted");
           return;
         }
+        if (data) acceptedCache.add(user.id);
         setStatus(data ? "accepted" : "needed");
       });
 
@@ -75,6 +91,7 @@ export const TermsGate = ({ children }: { children: React.ReactNode }) => {
         });
         return;
       }
+      if (user) acceptedCache.add(user.id);
       setStatus("accepted");
       toast({ title: "Tudo certo!", description: "Aceite registrado com sucesso." });
     } finally {
