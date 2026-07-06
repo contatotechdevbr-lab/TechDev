@@ -14,7 +14,12 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { CheckoutDialog, type CheckoutPlan, type BillingMode } from "@/components/CheckoutDialog";
+import {
+  CustomProjectCheckoutDialog,
+  type CustomProjectToPay,
+} from "@/components/CustomProjectCheckoutDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { CreditCard, CheckCircle2 } from "lucide-react";
 
 const WHATSAPP_LINK =
   "https://wa.me/5521980386279?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20um%20or%C3%A7amento%20para%20um%20projeto%20personalizado.";
@@ -85,6 +90,14 @@ function formatPrice(cents: number) {
 
 type Tab = "assinatura" | "projeto";
 
+type CustomProject = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  max_installments: number;
+};
+
 export const PricingSection = () => {
   const [tab, setTab] = useState<Tab>("assinatura");
   // Forma de pagamento escolhida por card (independente entre os planos).
@@ -94,8 +107,47 @@ export const PricingSection = () => {
   // Card destacado pelo usuário (seleção visual premium). Permanece até escolher outro.
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
+  // Projetos personalizados do cliente logado (se houver). Quando existe um
+  // projeto ativo, o card "Projeto Personalizado" vira um card de pagamento.
+  const [myProject, setMyProject] = useState<CustomProject | null>(null);
+  const [projectStatus, setProjectStatus] = useState<string | null>(null);
+  const [payProject, setPayProject] = useState<CustomProjectToPay | null>(null);
+
   // Padrão: recorrência (parcelamento) sempre aparece primeiro, nunca à vista.
   const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";
+
+  const loadMyProject = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData.session?.user?.id;
+    if (!uid) {
+      setMyProject(null);
+      setProjectStatus(null);
+      return;
+    }
+    const [{ data: proj }, { data: pays }] = await Promise.all([
+      supabase
+        .from("custom_plans")
+        .select("id, name, description, price_cents, max_installments")
+        .eq("user_id", uid)
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("payments")
+        .select("status, custom_plan_id")
+        .eq("user_id", uid)
+        .not("custom_plan_id", "is", null),
+    ]);
+    setMyProject((proj as CustomProject) ?? null);
+    if (proj) {
+      const rows = ((pays as any[]) ?? []).filter((p) => p.custom_plan_id === (proj as any).id);
+      const paid = rows.find((p) => p.status === "paid");
+      setProjectStatus(paid ? "paid" : rows.some((p) => p.status === "pending") ? "pending" : null);
+    } else {
+      setProjectStatus(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -128,6 +180,17 @@ export const PricingSection = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    loadMyProject();
+    const { data: sub } = supabase.auth.onAuthStateChange(() => loadMyProject());
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Se o cliente tem um projeto ativo, abrimos a aba "Projeto Personalizado".
+  useEffect(() => {
+    if (myProject) setTab("projeto");
+  }, [myProject]);
 
   return (
     <section id="planos" className="relative py-24 bg-background overflow-hidden">
@@ -307,17 +370,60 @@ export const PricingSection = () => {
                 <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-4">
                   <Sparkles className="h-3.5 w-3.5" /> Sob medida
                 </span>
-                <h3 className="text-3xl font-bold mb-3 text-balance">Projeto Personalizado</h3>
-                <p className="text-muted-foreground mb-6 text-pretty leading-relaxed">
-                  Tudo o que o seu site precisa para permanecer online, seguro e atualizado —
-                  desenvolvido especialmente para o seu negócio.
-                </p>
-                <p className="text-2xl font-bold text-primary mb-6">Valor sob consulta</p>
-                <Button variant="whatsapp" size="lg" className="w-full sm:w-auto" asChild>
-                  <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
-                    <MessageCircle className="mr-2 h-5 w-5" /> Solicitar Orçamento
-                  </a>
-                </Button>
+                {myProject ? (
+                  <>
+                    <h3 className="text-3xl font-bold mb-3 text-balance">{myProject.name}</h3>
+                    <p className="text-muted-foreground mb-6 text-pretty leading-relaxed">
+                      {myProject.description ??
+                        "Projeto personalizado criado especialmente para você. Efetue o pagamento para dar início."}
+                    </p>
+                    <p className="text-3xl font-bold text-primary mb-1">
+                      R$ {formatPrice(myProject.price_cents).reais},
+                      {formatPrice(myProject.price_cents).centavos}
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      {myProject.max_installments > 1
+                        ? `à vista (PIX/cartão) ou em até ${myProject.max_installments}x no cartão`
+                        : "à vista via PIX ou cartão"}
+                    </p>
+                    {projectStatus === "paid" ? (
+                      <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600">
+                        <CheckCircle2 className="h-4 w-4" /> Projeto pago
+                      </span>
+                    ) : (
+                      <Button
+                        variant="hero"
+                        size="lg"
+                        className="w-full sm:w-auto"
+                        onClick={() =>
+                          setPayProject({
+                            id: myProject.id,
+                            name: myProject.name,
+                            price_cents: myProject.price_cents,
+                            max_installments: myProject.max_installments,
+                          })
+                        }
+                      >
+                        <CreditCard className="mr-2 h-5 w-5" />
+                        {projectStatus === "pending" ? "Concluir pagamento" : "Pagar projeto"}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-3xl font-bold mb-3 text-balance">Projeto Personalizado</h3>
+                    <p className="text-muted-foreground mb-6 text-pretty leading-relaxed">
+                      Tudo o que o seu site precisa para permanecer online, seguro e atualizado —
+                      desenvolvido especialmente para o seu negócio.
+                    </p>
+                    <p className="text-2xl font-bold text-primary mb-6">Valor sob consulta</p>
+                    <Button variant="whatsapp" size="lg" className="w-full sm:w-auto" asChild>
+                      <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
+                        <MessageCircle className="mr-2 h-5 w-5" /> Solicitar Orçamento
+                      </a>
+                    </Button>
+                  </>
+                )}
               </div>
               {/* Lado direito: recursos */}
               <div className="p-8 md:p-10 bg-card/40">
@@ -349,6 +455,15 @@ export const PricingSection = () => {
           onOpenChange={(o) => !o && setSelected(null)}
         />
       )}
+
+      <CustomProjectCheckoutDialog
+        project={payProject}
+        open={payProject !== null}
+        onOpenChange={(o) => {
+          if (!o) setPayProject(null);
+        }}
+        onPaid={loadMyProject}
+      />
     </section>
   );
 };
