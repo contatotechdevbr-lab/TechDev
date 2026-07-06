@@ -4,19 +4,26 @@ import { getAdminUser } from "../_lib/require-admin.js";
 import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
- * GET /api/admin/users
+ * /api/admin/users  (endpoint único de gestão de usuários — restrito a admins)
  *
- * Fonte ÚNICA e real da aba "Clientes": faz o merge de TODOS os usuários
- * cadastrados no Supabase Auth (auth.users) com os dados de negócio das
- * tabelas `clients`, `profiles` e `user_roles`.
+ *  GET  -> lista TODOS os usuários cadastrados no Supabase Auth (auth.users)
+ *          unidos aos dados de negócio de `clients` e `user_roles`. Como parte
+ *          de auth.users ("usuário cadastrado" = conta de login), todo cadastro
+ *          novo aparece automaticamente. Status derivado do Auth
+ *          (banned_until / email_confirmed_at).
  *
- * Por que partir de auth.users? Porque "usuário cadastrado" = conta de login.
- * Assim, todo cadastro novo aparece automaticamente aqui, mesmo que ainda não
- * exista linha em `clients`. O status (ativo/banido/pendente) é derivado do
- * próprio Auth (banned_until / email_confirmed_at), nunca só de uma flag local.
+ *  POST { userId, action } -> ações reais e seguras:
+ *          - "ban"    bloqueia o login (ban_duration longo) sem apagar a conta
+ *          - "unban"  libera o login novamente
+ *          - "delete" exclui de verdade (clients + auth.users) impedindo logins
  *
- * Acesso restrito a administradores (getAdminUser).
+ * Vários endpoints foram unificados aqui de propósito: o plano Hobby da Vercel
+ * limita o total de Serverless Functions, então concentramos as operações
+ * admin num só handler.
  */
+
+// ~100 anos: banimento permanente até ser revertido.
+const BAN_DURATION = "876000h";
 
 interface ClientRow {
   id: string;
@@ -59,8 +66,8 @@ export interface AdminUser {
 const DEFAULT_COLOR = "205 85% 55%";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "GET") {
-    res.setHeader("Allow", "GET");
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.setHeader("Allow", "GET, POST");
     return res.status(405).json({ error: "Método não permitido." });
   }
 
@@ -69,6 +76,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const admin = await getAdminUser(req);
   if (!admin) {
     return res.status(403).json({ error: "Acesso restrito a administradores." });
+  }
+
+  // POST: ações de banir/desbanir/remover.
+  if (req.method === "POST") {
+    return handleAction(req, res, admin.id);
   }
 
   try {
@@ -154,5 +166,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     console.error("[v0] admin/users error:", err);
     return res.status(500).json({ error: "Não foi possível carregar os usuários." });
+  }
+}
+
+/**
+ * Executa banir / desbanir / remover. `adminId` vem do token (já autorizado),
+ * usado para impedir que o admin aja sobre a própria conta.
+ */
+async function handleAction(req: VercelRequest, res: VercelResponse, adminId: string) {
+  const { userId, action } = (req.body ?? {}) as { userId?: string; action?: string };
+
+  if (!userId || !["ban", "unban", "delete"].includes(action ?? "")) {
+    return res.status(400).json({ error: "Parâmetros inválidos." });
+  }
+  if (userId === adminId) {
+    return res.status(400).json({ error: "Você não pode executar esta ação na própria conta." });
+  }
+
+  try {
+    // --- Remover: apaga clients + conta do Auth (impede novos logins) ---
+    if (action === "delete") {
+      const { error: cliErr } = await supabaseAdmin.from("clients").delete().eq("user_id", userId);
+      if (cliErr) console.log("[v0] admin delete: clients:", cliErr.message);
+
+      const { error: authErr } = await supabaseAdmin.auth.admin.deleteUser(userId);
+      if (authErr) {
+        console.error("[v0] admin delete: auth:", authErr.message);
+        return res.status(500).json({ error: "Não foi possível excluir a conta do usuário." });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    // --- Banir / Desbanir: bloqueia login sem apagar a conta ---
+    const ban = action === "ban";
+    const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      ban_duration: ban ? BAN_DURATION : "none",
+    });
+    if (banError) {
+      console.error("[v0] admin ban: updateUser:", banError.message);
+      return res.status(500).json({ error: "Não foi possível atualizar o acesso do usuário." });
+    }
+
+    // Espelha em clients.status (best-effort).
+    const { error: cliErr } = await supabaseAdmin
+      .from("clients")
+      .update({ status: ban ? "inativo" : "ativo", updated_at: new Date().toISOString() })
+      .eq("user_id", userId);
+    if (cliErr) console.log("[v0] admin ban: clients update:", cliErr.message);
+
+    return res.status(200).json({ ok: true, status: ban ? "banido" : "ativo" });
+  } catch (err) {
+    console.error("[v0] admin action error:", err);
+    return res.status(500).json({ error: "Erro interno ao processar a ação." });
   }
 }

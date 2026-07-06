@@ -91,7 +91,7 @@ export function useAdminUsers(): UseAdminUsers {
 
   const banUser = useCallback(
     async (userId: string, action: "ban" | "unban") => {
-      const res = await apiFetch("/api/admin/user-ban", {
+      const res = await apiFetch("/api/admin/users", {
         method: "POST",
         body: JSON.stringify({ userId, action }),
       });
@@ -104,9 +104,9 @@ export function useAdminUsers(): UseAdminUsers {
 
   const deleteUser = useCallback(
     async (userId: string) => {
-      const res = await apiFetch("/api/admin/user-delete", {
+      const res = await apiFetch("/api/admin/users", {
         method: "POST",
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, action: "delete" }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Falha ao remover o usuário.");
