@@ -124,41 +124,46 @@ export const PricingSection = () => {
   const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";
 
   const loadMyProject = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const uid = sessionData.session?.user?.id;
-    if (!uid) {
-      setMyProject(null);
-      setProjectStatus(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData.session?.user?.id;
+      if (!uid) {
+        setMyProject(null);
+        setProjectStatus(null);
+        return;
+      }
+      const [{ data: proj }, { data: pays }] = await Promise.all([
+        supabase
+          .from("custom_plans")
+          .select("id, name, description, price_cents, max_installments")
+          .eq("user_id", uid)
+          .eq("active", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("payments")
+          .select("status, custom_plan_id")
+          .eq("user_id", uid)
+          .not("custom_plan_id", "is", null),
+      ]);
+      setMyProject((proj as CustomProject) ?? null);
+      if (proj) {
+        const rows = ((pays as any[]) ?? []).filter((p) => p.custom_plan_id === (proj as any).id);
+        const paid = rows.find((p) => p.status === "paid");
+        setProjectStatus(paid ? "paid" : rows.some((p) => p.status === "pending") ? "pending" : null);
+        // Cliente com projeto ativo abre direto na aba do projeto (mesmo lote de
+        // estado que 'ready', evitando qualquer troca visível de aba).
+        setTab("projeto");
+      } else {
+        setProjectStatus(null);
+      }
+    } catch (err) {
+      console.error("[v0] loadMyProject falhou:", err);
+    } finally {
+      // A verificação SEMPRE conclui, mesmo em erro/timeout — nunca trava a tela.
       setProjectChecked(true);
-      return;
     }
-    const [{ data: proj }, { data: pays }] = await Promise.all([
-      supabase
-        .from("custom_plans")
-        .select("id, name, description, price_cents, max_installments")
-        .eq("user_id", uid)
-        .eq("active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("payments")
-        .select("status, custom_plan_id")
-        .eq("user_id", uid)
-        .not("custom_plan_id", "is", null),
-    ]);
-    setMyProject((proj as CustomProject) ?? null);
-    if (proj) {
-      const rows = ((pays as any[]) ?? []).filter((p) => p.custom_plan_id === (proj as any).id);
-      const paid = rows.find((p) => p.status === "paid");
-      setProjectStatus(paid ? "paid" : rows.some((p) => p.status === "pending") ? "pending" : null);
-      // Cliente com projeto ativo abre direto na aba do projeto (mesmo lote de
-      // estado que 'ready', evitando qualquer troca visível de aba).
-      setTab("projeto");
-    } else {
-      setProjectStatus(null);
-    }
-    setProjectChecked(true);
   };
 
   useEffect(() => {
@@ -170,8 +175,9 @@ export const PricingSection = () => {
       )
       .eq("active", true)
       .order("price_cents", { ascending: true })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!active) return;
+        if (error) console.error("[v0] carregar planos falhou:", error);
         if (data && data.length > 0) {
           setPlans(
             data.map((p) => ({
@@ -188,10 +194,19 @@ export const PricingSection = () => {
             })),
           );
         }
+        // Mesmo sem dados (ou com erro) liberamos a tela — cai no fallback de planos.
         setPlansLoaded(true);
       });
+    // Trava de segurança: se algo demorar demais, libera a renderização em 4s
+    // para nunca deixar o esqueleto preso.
+    const safety = window.setTimeout(() => {
+      if (!active) return;
+      setPlansLoaded(true);
+      setProjectChecked(true);
+    }, 4000);
     return () => {
       active = false;
+      window.clearTimeout(safety);
     };
   }, []);
 
