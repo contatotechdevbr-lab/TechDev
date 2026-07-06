@@ -24,50 +24,6 @@ import { CreditCard, CheckCircle2 } from "lucide-react";
 const WHATSAPP_LINK =
   "https://wa.me/5521980386279?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20um%20or%C3%A7amento%20para%20um%20projeto%20personalizado.";
 
-// Fallback enquanto os planos reais carregam do banco
-const FALLBACK_PLANS: CheckoutPlan[] = [
-  {
-    id: "p1",
-    name: "1 a 5 Profissionais",
-    description: "Ideal para pequenas equipes",
-    price_cents: 10990,
-    features: ["Até 5 profissionais", "Agenda integrada", "Suporte por e-mail", "Hospedagem inclusa"],
-    max_installments: 1,
-    is_popular: false,
-  },
-  {
-    id: "p2",
-    name: "6 a 10 Profissionais",
-    description: "Para equipes em crescimento",
-    price_cents: 16490,
-    features: [
-      "Até 10 profissionais",
-      "Agenda integrada",
-      "Suporte prioritário",
-      "Hospedagem inclusa",
-      "Relatórios avançados",
-    ],
-    max_installments: 1,
-    is_popular: true,
-  },
-  {
-    id: "p3",
-    name: "+10 Profissionais",
-    description: "Para grandes operações",
-    price_cents: 21990,
-    features: [
-      "Profissionais ilimitados",
-      "Agenda integrada",
-      "Suporte 24/7",
-      "Hospedagem inclusa",
-      "Relatórios avançados",
-      "Gerente de conta",
-    ],
-    max_installments: 1,
-    is_popular: false,
-  },
-];
-
 const CUSTOM_FEATURES = [
   { icon: Server, label: "Hospedagem Premium" },
   { icon: Globe, label: "Domínio (.com ou .com.br*)" },
@@ -102,7 +58,8 @@ export const PricingSection = () => {
   const [tab, setTab] = useState<Tab>("assinatura");
   // Forma de pagamento escolhida por card (independente entre os planos).
   const [billingModes, setBillingModes] = useState<Record<string, BillingMode>>({});
-  const [plans, setPlans] = useState<CheckoutPlan[]>(FALLBACK_PLANS);
+  // Sempre carregado do banco. Nunca usamos planos "fantasma" fixos no código.
+  const [plans, setPlans] = useState<CheckoutPlan[]>([]);
   const [selected, setSelected] = useState<CheckoutPlan | null>(null);
   // Card destacado pelo usuário (seleção visual premium). Permanece até escolher outro.
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
@@ -178,23 +135,21 @@ export const PricingSection = () => {
       .then(({ data, error }) => {
         if (!active) return;
         if (error) console.error("[v0] carregar planos falhou:", error);
-        if (data && data.length > 0) {
-          setPlans(
-            data.map((p) => ({
-              id: p.id,
-              name: p.name,
-              description: p.description ?? "",
-              price_cents: p.price_cents,
-              features: p.features ?? [],
-              max_installments: p.max_installments ?? 1,
-              is_popular: p.is_popular ?? false,
-              discount_annual_pct: p.discount_annual_pct ?? 20,
-              allow_recurring: p.allow_recurring ?? true,
-              allow_upfront: p.allow_upfront ?? true,
-            })),
-          );
-        }
-        // Mesmo sem dados (ou com erro) liberamos a tela — cai no fallback de planos.
+        // Sempre refletimos exatamente o que está no banco (planos ativos).
+        setPlans(
+          (data ?? []).map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description ?? "",
+            price_cents: p.price_cents,
+            features: p.features ?? [],
+            max_installments: p.max_installments ?? 1,
+            is_popular: p.is_popular ?? false,
+            discount_annual_pct: p.discount_annual_pct ?? 20,
+            allow_recurring: p.allow_recurring ?? true,
+            allow_upfront: p.allow_upfront ?? true,
+          })),
+        );
         setPlansLoaded(true);
       });
     // Trava de segurança: se algo demorar demais, libera a renderização em 4s
@@ -287,6 +242,11 @@ export const PricingSection = () => {
         {/* Aba: Assinatura — 3 cards */}
         {ready && tab === "assinatura" && (
           <div className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto items-stretch">
+            {plans.length === 0 && (
+              <p className="text-center text-muted-foreground py-12">
+                Nenhum plano de assinatura disponível no momento.
+              </p>
+            )}
             {plans.map((plan) => {
               const popular = plan.is_popular;
               const discountPct = plan.discount_annual_pct ?? 20;
