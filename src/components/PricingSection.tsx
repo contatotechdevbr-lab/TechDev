@@ -113,6 +113,13 @@ export const PricingSection = () => {
   const [projectStatus, setProjectStatus] = useState<string | null>(null);
   const [payProject, setPayProject] = useState<CustomProjectToPay | null>(null);
 
+  // Flags de carregamento — só renderizamos o conteúdo real depois que os
+  // planos e a verificação de projeto terminam, evitando o "flash" de valores
+  // e a troca de aba ao dar F5.
+  const [plansLoaded, setPlansLoaded] = useState(false);
+  const [projectChecked, setProjectChecked] = useState(false);
+  const ready = plansLoaded && projectChecked;
+
   // Padrão: recorrência (parcelamento) sempre aparece primeiro, nunca à vista.
   const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";
 
@@ -122,6 +129,7 @@ export const PricingSection = () => {
     if (!uid) {
       setMyProject(null);
       setProjectStatus(null);
+      setProjectChecked(true);
       return;
     }
     const [{ data: proj }, { data: pays }] = await Promise.all([
@@ -144,9 +152,13 @@ export const PricingSection = () => {
       const rows = ((pays as any[]) ?? []).filter((p) => p.custom_plan_id === (proj as any).id);
       const paid = rows.find((p) => p.status === "paid");
       setProjectStatus(paid ? "paid" : rows.some((p) => p.status === "pending") ? "pending" : null);
+      // Cliente com projeto ativo abre direto na aba do projeto (mesmo lote de
+      // estado que 'ready', evitando qualquer troca visível de aba).
+      setTab("projeto");
     } else {
       setProjectStatus(null);
     }
+    setProjectChecked(true);
   };
 
   useEffect(() => {
@@ -159,7 +171,8 @@ export const PricingSection = () => {
       .eq("active", true)
       .order("price_cents", { ascending: true })
       .then(({ data }) => {
-        if (active && data && data.length > 0) {
+        if (!active) return;
+        if (data && data.length > 0) {
           setPlans(
             data.map((p) => ({
               id: p.id,
@@ -175,6 +188,7 @@ export const PricingSection = () => {
             })),
           );
         }
+        setPlansLoaded(true);
       });
     return () => {
       active = false;
@@ -186,11 +200,6 @@ export const PricingSection = () => {
     const { data: sub } = supabase.auth.onAuthStateChange(() => loadMyProject());
     return () => sub.subscription.unsubscribe();
   }, []);
-
-  // Se o cliente tem um projeto ativo, abrimos a aba "Projeto Personalizado".
-  useEffect(() => {
-    if (myProject) setTab("projeto");
-  }, [myProject]);
 
   return (
     <section id="planos" className="relative py-24 bg-background overflow-hidden">
@@ -207,41 +216,61 @@ export const PricingSection = () => {
           </p>
         </div>
 
-        {/* Toggle */}
-        <div className="flex justify-center mb-3">
-          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 p-1">
-            <button
-              type="button"
-              onClick={() => setTab("projeto")}
-              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
-                tab === "projeto"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Projeto Personalizado
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("assinatura")}
-              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
-                tab === "assinatura"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Assinatura
-            </button>
+        {/* Enquanto os dados carregam, mostramos um esqueleto — evita o "flash"
+            de valores e a troca de aba ao dar F5. */}
+        {!ready && (
+          <div
+            className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto items-stretch"
+            aria-hidden
+          >
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-[30rem] w-full sm:w-[22rem] rounded-2xl border border-border bg-card/40 animate-pulse"
+              />
+            ))}
           </div>
-        </div>
-        <p className="text-center text-sm text-muted-foreground mb-10">
-          {tab === "assinatura"
-            ? "Escolha o plano e, no card, decida como quer pagar."
-            : "Orçamento sob medida para o seu projeto, sem mensalidade fixa."}
-        </p>
+        )}
+
+        {/* Toggle */}
+        {ready && (
+          <div className="flex justify-center mb-3">
+            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 p-1">
+              <button
+                type="button"
+                onClick={() => setTab("projeto")}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                  tab === "projeto"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Projeto Personalizado
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("assinatura")}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                  tab === "assinatura"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Assinatura
+              </button>
+            </div>
+          </div>
+        )}
+        {ready && (
+          <p className="text-center text-sm text-muted-foreground mb-10">
+            {tab === "assinatura"
+              ? "Escolha o plano e, no card, decida como quer pagar."
+              : "Orçamento sob medida para o seu projeto, sem mensalidade fixa."}
+          </p>
+        )}
 
         {/* Aba: Assinatura — 3 cards */}
-        {tab === "assinatura" && (
+        {ready && tab === "assinatura" && (
           <div className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto items-stretch">
             {plans.map((plan) => {
               const popular = plan.is_popular;
@@ -362,7 +391,7 @@ export const PricingSection = () => {
         )}
 
         {/* Aba: Projeto Personalizado — card largo único */}
-        {tab === "projeto" && (
+        {ready && tab === "projeto" && (
           <div className="max-w-5xl mx-auto animate-fade-in">
             <div className="rounded-2xl border border-primary/40 bg-card overflow-hidden md:grid md:grid-cols-[1.1fr_1fr]">
               {/* Lado esquerdo: destaque */}
