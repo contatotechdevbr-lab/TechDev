@@ -75,7 +75,12 @@ export const PricingSection = () => {
   // e a troca de aba ao dar F5.
   const [plansLoaded, setPlansLoaded] = useState(false);
   const [projectChecked, setProjectChecked] = useState(false);
-  const ready = plansLoaded && projectChecked;
+  // A seção aparece assim que os planos do banco carregam. NÃO esperamos a
+  // verificação de projeto (que depende da sessão e pode demorar) — assim as
+  // assinaturas nunca ficam presas no esqueleto para o usuário logado. A aba do
+  // projeto é ativada em segundo plano, quando `loadMyProject` conclui.
+  const ready = plansLoaded;
+  void projectChecked;
 
   // Padrão: recorrência (parcelamento) sempre aparece primeiro, nunca à vista.
   const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";

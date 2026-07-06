@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,34 +7,36 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
 // A home é carregada de forma síncrona (primeira pintura rápida). Todas as demais
-// rotas usam lazy loading, então o visitante não baixa admin/dashboard/gráficos
-// só para abrir a página inicial.
+// rotas usam lazy loading resiliente (recarrega sozinho se um chunk ficar
+// desatualizado após um deploy), então o visitante não baixa admin/dashboard/
+// gráficos só para abrir a página inicial, e nenhuma página "trava" sem F5.
 import Index from "./pages/Index";
 
-const Auth = lazy(() => import("./pages/Auth"));
-const ConfirmEmail = lazy(() => import("./pages/ConfirmEmail"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const MeuSite = lazy(() => import("./pages/MeuSite"));
-const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
-const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
-const AdminLayout = lazy(() =>
+const Auth = lazyWithRetry(() => import("./pages/Auth"));
+const ConfirmEmail = lazyWithRetry(() => import("./pages/ConfirmEmail"));
+const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
+const MeuSite = lazyWithRetry(() => import("./pages/MeuSite"));
+const PrivacyPolicy = lazyWithRetry(() => import("./pages/PrivacyPolicy"));
+const TermsOfUse = lazyWithRetry(() => import("./pages/TermsOfUse"));
+const AdminLayout = lazyWithRetry(() =>
   import("./components/admin/AdminLayout").then((m) => ({ default: m.AdminLayout })),
 );
-const Overview = lazy(() => import("./pages/admin/Overview"));
-const Customers = lazy(() => import("./pages/admin/Customers"));
-const CustomerDetail = lazy(() => import("./pages/admin/CustomerDetail"));
-const Plans = lazy(() => import("./pages/admin/Plans"));
-const Sites = lazy(() => import("./pages/admin/Sites"));
-const Financeiro = lazy(() => import("./pages/admin/Financeiro"));
-const Assinaturas = lazy(() => import("./pages/admin/Assinaturas"));
-const Projetos = lazy(() => import("./pages/admin/Projetos"));
-const ProjetosPersonalizados = lazy(() => import("./pages/admin/ProjetosPersonalizados"));
-const Usuarios = lazy(() => import("./pages/admin/Usuarios"));
-const Relatorios = lazy(() => import("./pages/admin/Relatorios"));
-const Configuracoes = lazy(() => import("./pages/admin/Configuracoes"));
-const Perfil = lazy(() => import("./pages/admin/Perfil"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+const Overview = lazyWithRetry(() => import("./pages/admin/Overview"));
+const Customers = lazyWithRetry(() => import("./pages/admin/Customers"));
+const CustomerDetail = lazyWithRetry(() => import("./pages/admin/CustomerDetail"));
+const Plans = lazyWithRetry(() => import("./pages/admin/Plans"));
+const Sites = lazyWithRetry(() => import("./pages/admin/Sites"));
+const Financeiro = lazyWithRetry(() => import("./pages/admin/Financeiro"));
+const Assinaturas = lazyWithRetry(() => import("./pages/admin/Assinaturas"));
+const Projetos = lazyWithRetry(() => import("./pages/admin/Projetos"));
+const ProjetosPersonalizados = lazyWithRetry(() => import("./pages/admin/ProjetosPersonalizados"));
+const Usuarios = lazyWithRetry(() => import("./pages/admin/Usuarios"));
+const Relatorios = lazyWithRetry(() => import("./pages/admin/Relatorios"));
+const Configuracoes = lazyWithRetry(() => import("./pages/admin/Configuracoes"));
+const Perfil = lazyWithRetry(() => import("./pages/admin/Perfil"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
