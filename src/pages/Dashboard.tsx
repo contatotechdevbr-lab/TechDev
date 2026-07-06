@@ -77,7 +77,7 @@ const subStatusLabel = (s: string) =>
   s === "active" ? "Ativo" : s === "canceled" ? "Cancelado" : s === "past_due" ? "Em atraso" : s;
 
 const Dashboard = () => {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut, loading: authLoading } = useAuth();
   const [subs, setSubs] = useState<Sub[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [projects, setProjects] = useState<CustomProject[]>([]);
@@ -87,6 +87,7 @@ const Dashboard = () => {
 
   const loadData = useCallback(async () => {
     if (!user) return;
+    try {
     const [{ data: subsData }, { data: payData }, { data: projData }] = await Promise.all([
       supabase
         .from("subscriptions")
@@ -117,6 +118,9 @@ const Dashboard = () => {
       if (p.status === "paid" || !statusMap[p.custom_plan_id]) statusMap[p.custom_plan_id] = p.status;
     });
     setProjectPaid(statusMap);
+    } catch (err) {
+      console.error("[v0] Dashboard loadData falhou:", err);
+    }
   }, [user]);
 
   // Ao abrir o painel, reconcilia pagamentos pendentes com o Mercado Pago
@@ -135,9 +139,17 @@ const Dashboard = () => {
     }
   }, [user, loadData]);
 
+  // Aguarda o AuthProvider restaurar a sessão antes de buscar dados. Se não há
+  // usuário, encerra o "syncing" (o ProtectedRoute redireciona), evitando que o
+  // painel fique preso em "Atualizando..."/"Verificando seus pagamentos...".
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setSyncing(false);
+      return;
+    }
     void syncAndLoad();
-  }, [syncAndLoad]);
+  }, [authLoading, user, syncAndLoad]);
 
   const activeSub = subs.find((s) => s.status === "active");
   const activePlan = activeSub ? activeSub.plans || activeSub.custom_plans : null;

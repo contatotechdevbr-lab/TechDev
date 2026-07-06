@@ -129,7 +129,7 @@ const requestStatusBadge = (status: string) => {
 };
 
 const MeuSite = () => {
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, signOut, loading: authLoading } = useAuth();
   const [client, setClient] = useState<ClientRow | null>(null);
   const [site, setSite] = useState<SiteRow | null>(null);
   const [installments, setInstallments] = useState<Installment[]>([]);
@@ -143,12 +143,15 @@ const MeuSite = () => {
   const loadData = useCallback(async () => {
     if (!user) return;
 
+    try {
     // 1) Cliente vinculado ao usuário logado (RLS garante que só vê o próprio).
-    const { data: clientData } = await supabase
+    const { data: clientData, error: clientErr } = await supabase
       .from("clients")
       .select("id, user_id, full_name, plano, valor_mensal_cents, next_payment, site_id")
       .eq("user_id", user.id)
       .maybeSingle();
+
+    if (clientErr) console.error("[v0] MeuSite: consulta 'clients' falhou:", clientErr);
 
     const c = (clientData as ClientRow) ?? null;
     setClient(c);
@@ -193,6 +196,9 @@ const MeuSite = () => {
     setInstallments((instRes.data as Installment[]) ?? []);
     setRequests((reqRes.data as RequestRow[]) ?? []);
     setTimeline((tlRes.data as TimelineRow[]) ?? []);
+    } catch (err) {
+      console.error("[v0] MeuSite loadData falhou:", err);
+    }
   }, [user]);
 
   // Reconcilia cobranças pendentes com o Mercado Pago e recarrega.
@@ -211,9 +217,17 @@ const MeuSite = () => {
     }
   }, [user, loadData]);
 
+  // Espera o AuthProvider terminar de restaurar a sessão antes de decidir.
+  // Se não houver usuário, encerra o loading (o ProtectedRoute redireciona);
+  // nunca fica preso em "Carregando..." mesmo sem sessão ou em erro.
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     void syncAndLoad();
-  }, [syncAndLoad]);
+  }, [authLoading, user, syncAndLoad]);
 
   const openCharges = installments.filter((i) => i.status !== "paid");
   const hasSite = Boolean(site);

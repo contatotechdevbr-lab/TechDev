@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Check,
@@ -55,6 +56,9 @@ type CustomProject = {
 };
 
 export const PricingSection = () => {
+  // Usamos a sessão já resolvida pelo AuthProvider — NUNCA chamamos
+  // supabase.auth dentro deste componente, evitando o deadlock do lock de token.
+  const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<Tab>("assinatura");
   // Forma de pagamento escolhida por card (independente entre os planos).
   const [billingModes, setBillingModes] = useState<Record<string, BillingMode>>({});
@@ -85,15 +89,8 @@ export const PricingSection = () => {
   // Padrão: recorrência (parcelamento) sempre aparece primeiro, nunca à vista.
   const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";
 
-  const loadMyProject = async () => {
+  const loadMyProject = useCallback(async (uid: string) => {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const uid = sessionData.session?.user?.id;
-      if (!uid) {
-        setMyProject(null);
-        setProjectStatus(null);
-        return;
-      }
       const [{ data: proj }, { data: pays }] = await Promise.all([
         supabase
           .from("custom_plans")
@@ -126,7 +123,7 @@ export const PricingSection = () => {
       // A verificação SEMPRE conclui, mesmo em erro/timeout — nunca trava a tela.
       setProjectChecked(true);
     }
-  };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -170,11 +167,19 @@ export const PricingSection = () => {
     };
   }, []);
 
+  // A verificação de projeto usa a sessão já resolvida pelo AuthProvider.
+  // Sem onAuthStateChange e sem getSession aqui: nada readquire o lock de token,
+  // então não há deadlock e a query de planos nunca fica presa no F5.
   useEffect(() => {
-    loadMyProject();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => loadMyProject());
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    if (authLoading) return; // aguarda o auth restaurar a sessão
+    if (!user) {
+      setMyProject(null);
+      setProjectStatus(null);
+      setProjectChecked(true);
+      return;
+    }
+    void loadMyProject(user.id);
+  }, [authLoading, user, loadMyProject]);
 
   return (
     <section id="planos" className="relative py-24 bg-background overflow-hidden">
