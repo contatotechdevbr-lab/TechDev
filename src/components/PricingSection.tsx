@@ -476,7 +476,9 @@ export const PricingSection = () => {
         onOpenChange={(o) => {
           if (!o) setPayProject(null);
         }}
-        onPaid={loadMyProject}
+        onPaid={() => {
+          if (user) void loadMyProject(user.id);
+        }}
       />
     </section>
   );

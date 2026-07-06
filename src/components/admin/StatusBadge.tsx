@@ -5,6 +5,7 @@ const styles: Record<string, string> = {
   ativo: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   pendente: "bg-amber-500/15 text-amber-400 border-amber-500/30",
   inativo: "bg-muted text-muted-foreground border-border",
+  banido: "bg-destructive/15 text-destructive border-destructive/30",
   // sites
   desenvolvimento: "bg-primary/15 text-primary border-primary/30",
   suspenso: "bg-amber-500/15 text-amber-400 border-amber-500/30",
@@ -28,6 +29,7 @@ const labels: Record<string, string> = {
   ativo: "Ativo",
   pendente: "Pendente",
   inativo: "Inativo",
+  banido: "Banido",
   desenvolvimento: "Em desenvolvimento",
   suspenso: "Suspenso",
   cancelado: "Cancelado",

@@ -85,6 +85,18 @@ const Auth = () => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (error) {
+      // Conta banida pelo admin: o Supabase retorna code "user_banned".
+      const isBanned =
+        (error as { code?: string }).code === "user_banned" || /user is banned/i.test(error.message);
+      if (isBanned) {
+        toast({
+          title: "Conta suspensa",
+          description:
+            "Sua conta foi suspensa e o acesso está bloqueado. Entre em contato com o suporte da TechDev para mais informações.",
+          variant: "destructive",
+        });
+        return;
+      }
       const desc =
         error.message === "Email not confirmed"
           ? "Confirme seu e-mail com o código que enviamos antes de entrar."
