@@ -168,7 +168,7 @@ const Auth = () => {
   const handleResend = async () => {
     if (cooldown > 0) return;
     setBusy(true);
-    const { ok, data } = await postJson("/api/auth/resend", { email });
+    const { ok, data } = await postJson("/api/auth/register", { action: "resend", email });
     setBusy(false);
     if (!ok) {
       toast({ title: "Não foi possível reenviar", description: data.error ?? "Tente novamente.", variant: "destructive" });

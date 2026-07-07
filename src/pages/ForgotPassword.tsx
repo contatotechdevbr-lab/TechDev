@@ -1,21 +1,26 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { LogoLink } from "@/components/LogoLink";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
-import { MailCheck, Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 
 const emailSchema = z.string().trim().email("Informe um e-mail válido").max(255);
 
+/**
+ * Solicitação de recuperação de senha.
+ * Envia o e-mail pelo nosso backend (Resend, com a marca TechDev) e, em seguida,
+ * leva o usuário para a página onde ele digita o código e define a nova senha.
+ * Segurança: a resposta é sempre genérica — nunca revela se o e-mail existe.
+ */
 const ForgotPassword = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,22 +31,23 @@ const ForgotPassword = () => {
     }
 
     setBusy(true);
-    // Em produção sempre voltamos para o domínio oficial (nunca a URL interna
-    // *.vercel.app). O link do e-mail leva o usuário à página de nova senha.
-    const isLocalhost = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
-    const origin = isLocalhost ? window.location.origin : "https://www.techdev.website";
-
-    const { error } = await supabase.auth.resetPasswordForEmail(parsed.data, {
-      redirectTo: `${origin}/redefinir-senha`,
-    });
+    try {
+      await fetch("/api/auth/password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: parsed.data }),
+      });
+    } catch (err) {
+      // Não revela detalhes; segue para a etapa de código de qualquer forma.
+      console.error("[v0] password-reset request:", err);
+    }
     setBusy(false);
 
-    // Segurança: nunca revelamos se o e-mail existe. Mesmo em erro genérico,
-    // mostramos a confirmação neutra (só logamos o erro real para diagnóstico).
-    if (error) {
-      console.error("[v0] resetPasswordForEmail:", error.message);
-    }
-    setSent(true);
+    toast({
+      title: "Verifique seu e-mail",
+      description: "Se houver uma conta com este e-mail, enviamos um código de redefinição.",
+    });
+    navigate(`/redefinir-senha?email=${encodeURIComponent(parsed.data)}`);
   };
 
   return (
@@ -51,58 +57,36 @@ const ForgotPassword = () => {
           <CardTitle className="text-2xl">
             <LogoLink className="text-gradient">TechDev</LogoLink>
           </CardTitle>
-          <CardDescription>
-            {sent ? "Verifique seu e-mail" : "Recuperar senha"}
-          </CardDescription>
+          <CardDescription>Recuperar senha</CardDescription>
         </CardHeader>
         <CardContent>
-          {sent ? (
-            <div className="space-y-6 py-2">
-              <div className="space-y-3 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                  <MailCheck className="h-7 w-7 text-primary" />
-                </div>
-                <div className="space-y-1">
-                  <h2 className="text-lg font-semibold text-foreground">Instruções enviadas</h2>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    Se houver uma conta associada a{" "}
-                    <span className="font-medium text-foreground">{email}</span>, você receberá um
-                    e-mail com o link para redefinir sua senha. Verifique também a caixa de spam.
-                  </p>
-                </div>
-              </div>
-              <Button asChild variant="hero" className="w-full">
-                <Link to="/auth">Voltar para o login</Link>
-              </Button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Informe o e-mail cadastrado e enviaremos um código de 6 dígitos para você criar uma
+              nova senha.
+            </p>
+            <div>
+              <Label htmlFor="fp-email">E-mail</Label>
+              <Input
+                id="fp-email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="voce@exemplo.com"
+                required
+              />
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Informe o e-mail cadastrado e enviaremos um link para você criar uma nova senha.
-              </p>
-              <div>
-                <Label htmlFor="fp-email">E-mail</Label>
-                <Input
-                  id="fp-email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="voce@exemplo.com"
-                  required
-                />
-              </div>
-              <Button type="submit" variant="hero" className="w-full" disabled={busy}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar link de recuperação"}
-              </Button>
-              <Link
-                to="/auth"
-                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" /> Voltar para o login
-              </Link>
-            </form>
-          )}
+            <Button type="submit" variant="hero" className="w-full" disabled={busy}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar código de recuperação"}
+            </Button>
+            <Link
+              to="/auth"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" /> Voltar para o login
+            </Link>
+          </form>
         </CardContent>
       </Card>
     </div>
