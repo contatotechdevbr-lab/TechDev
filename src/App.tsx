@@ -15,6 +15,8 @@ import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import Index from "./pages/Index";
 
 const Auth = lazyWithRetry(() => import("./pages/Auth"));
+const ForgotPassword = lazyWithRetry(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazyWithRetry(() => import("./pages/ResetPassword"));
 const ConfirmEmail = lazyWithRetry(() => import("./pages/ConfirmEmail"));
 const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
 const MeuSite = lazyWithRetry(() => import("./pages/MeuSite"));
@@ -58,6 +60,8 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/esqueci-senha" element={<ForgotPassword />} />
+              <Route path="/redefinir-senha" element={<ResetPassword />} />
               <Route path="/confirmar-email" element={<ConfirmEmail />} />
               <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
               <Route path="/termos-de-uso" element={<TermsOfUse />} />

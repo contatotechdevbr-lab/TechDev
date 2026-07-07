@@ -300,6 +300,11 @@ const Auth = () => {
                     <div>
                       <Label htmlFor="sp">Senha</Label>
                       <Input id="sp" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                      <div className="mt-1.5 text-right">
+                        <Link to="/esqueci-senha" className="text-sm text-primary hover:underline">
+                          Esqueci minha senha
+                        </Link>
+                      </div>
                     </div>
                     <Button type="submit" variant="hero" className="w-full" disabled={busy}>
                       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
