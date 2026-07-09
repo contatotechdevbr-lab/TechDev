@@ -11,6 +11,25 @@ node_modules
 dist
 dist-ssr
 *.local
+.v0
+
+# Este projeto usa npm (package-lock.json e a fonte de verdade).
+# Lockfiles de outros gerenciadores geram ambiguidade no build e alertas
+# de seguranca desatualizados. Nao versionar.
+bun.lock
+bun.lockb
+pnpm-lock.yaml
+yarn.lock
+
+# Segredos de ambiente — NUNCA versionar segredos de servidor.
+# Os segredos reais (SERVICE_ROLE, MERCADO_PAGO_ACCESS_TOKEN, RESEND_API_KEY, etc.)
+# ficam nas Environment Variables da Vercel e em *.local (ja ignorados acima).
+# O .env versionado contem APENAS chaves publicas VITE_ (anon/publishable),
+# necessarias no build do frontend e protegidas por RLS no Supabase.
+.env.local
+.env.*.local
+.env.production
+.env.production.local
 
 # Editor directories and files
 .vscode/*

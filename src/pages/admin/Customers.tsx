@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -22,56 +23,101 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Plus, MoreHorizontal, Pencil, Trash2, Eye } from "lucide-react";
+import { Search, MoreHorizontal, Eye, Trash2, Ban, ShieldCheck, Loader2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { StatusBadge } from "@/components/admin/StatusBadge";
-import { ClienteFormDialog } from "@/components/admin/ClienteFormDialog";
-import { useClientes, clientesStore } from "@/lib/clientes-store";
-import { fmtBRL, fmtData, type Cliente } from "@/lib/mock-data";
+import { useAdminUsers, type AdminUser } from "@/lib/admin-users";
+import { toast } from "@/hooks/use-toast";
+import { fmtBRL, fmtData } from "@/lib/mock-data";
+
+type Acao = { tipo: "remover" | "banir" | "desbanir"; user: AdminUser };
 
 const Customers = () => {
-  const clientes = useClientes();
+  const { users, loading, error, refetch, banUser, deleteUser } = useAdminUsers();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [planoFiltro, setPlanoFiltro] = useState("todos");
   const [statusFiltro, setStatusFiltro] = useState("todos");
-  const [formOpen, setFormOpen] = useState(false);
-  const [editando, setEditando] = useState<Cliente | null>(null);
-  const [removendo, setRemovendo] = useState<Cliente | null>(null);
+  const [acao, setAcao] = useState<Acao | null>(null);
+  const [processando, setProcessando] = useState(false);
 
   const filtrados = useMemo(
     () =>
-      clientes.filter((c) => {
+      users.filter((c) => {
         const q = search.toLowerCase();
         const matchBusca =
           !q ||
           c.nome.toLowerCase().includes(q) ||
           c.empresa.toLowerCase().includes(q) ||
           c.email.toLowerCase().includes(q);
-        const matchPlano = planoFiltro === "todos" || c.plano === planoFiltro;
         const matchStatus = statusFiltro === "todos" || c.status === statusFiltro;
-        return matchBusca && matchPlano && matchStatus;
+        return matchBusca && matchStatus;
       }),
-    [clientes, search, planoFiltro, statusFiltro]
+    [users, search, statusFiltro]
   );
 
-  const abrirNovo = () => {
-    setEditando(null);
-    setFormOpen(true);
+  const ativos = users.filter((u) => u.status === "ativo").length;
+  const banidos = users.filter((u) => u.status === "banido").length;
+
+  const confirmarAcao = async () => {
+    if (!acao) return;
+    setProcessando(true);
+    try {
+      if (acao.tipo === "remover") {
+        await deleteUser(acao.user.userId);
+        toast({ title: "Conta removida", description: `${acao.user.nome} não poderá mais fazer login.` });
+      } else if (acao.tipo === "banir") {
+        await banUser(acao.user.userId, "ban");
+        toast({ title: "Usuário banido", description: `${acao.user.nome} está com o acesso suspenso.` });
+      } else {
+        await banUser(acao.user.userId, "unban");
+        toast({ title: "Acesso liberado", description: `${acao.user.nome} pode fazer login novamente.` });
+      }
+      setAcao(null);
+    } catch (err) {
+      toast({
+        title: "Não foi possível concluir",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessando(false);
+    }
   };
-  const abrirEdicao = (c: Cliente) => {
-    setEditando(c);
-    setFormOpen(true);
+
+  const dialogTexto = () => {
+    if (!acao) return { titulo: "", desc: "", botao: "", destrutivo: false };
+    if (acao.tipo === "remover")
+      return {
+        titulo: "Remover conta permanentemente?",
+        desc: `A conta de "${acao.user.nome}" (${acao.user.email}) será excluída do banco e da autenticação. Ela não poderá mais fazer login. Esta ação não pode ser desfeita.`,
+        botao: "Remover conta",
+        destrutivo: true,
+      };
+    if (acao.tipo === "banir")
+      return {
+        titulo: "Banir usuário?",
+        desc: `"${acao.user.nome}" ficará impedido de fazer login e verá uma mensagem de conta suspensa. A conta é mantida e você pode desbanir a qualquer momento.`,
+        botao: "Banir",
+        destrutivo: true,
+      };
+    return {
+      titulo: "Desbanir usuário?",
+      desc: `"${acao.user.nome}" voltará a ter acesso normal à conta.`,
+      botao: "Desbanir",
+      destrutivo: false,
+    };
   };
+
+  const txt = dialogTexto();
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Clientes"
-        description={`${clientes.length} clientes cadastrados na TechDev.`}
+        description={`${users.length} usuários cadastrados · ${ativos} ativos · ${banidos} banidos.`}
         actions={
-          <Button onClick={abrirNovo}>
-            <Plus className="mr-1.5 h-4 w-4" /> Adicionar cliente
+          <Button variant="outline" onClick={() => void refetch()} disabled={loading}>
+            <RefreshCw className={`mr-1.5 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
           </Button>
         }
       />
@@ -88,17 +134,6 @@ const Customers = () => {
                 className="pl-9"
               />
             </div>
-            <Select value={planoFiltro} onValueChange={setPlanoFiltro}>
-              <SelectTrigger className="sm:w-44">
-                <SelectValue placeholder="Plano" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os planos</SelectItem>
-                <SelectItem value="Essencial">Essencial</SelectItem>
-                <SelectItem value="Profissional">Profissional</SelectItem>
-                <SelectItem value="Premium">Premium</SelectItem>
-              </SelectContent>
-            </Select>
             <Select value={statusFiltro} onValueChange={setStatusFiltro}>
               <SelectTrigger className="sm:w-40">
                 <SelectValue placeholder="Status" />
@@ -106,13 +141,24 @@ const Customers = () => {
               <SelectContent>
                 <SelectItem value="todos">Todos status</SelectItem>
                 <SelectItem value="ativo">Ativo</SelectItem>
+                <SelectItem value="banido">Banido</SelectItem>
                 <SelectItem value="pendente">Pendente</SelectItem>
-                <SelectItem value="inativo">Inativo</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
+
+      {error && (
+        <Card>
+          <CardContent className="flex items-center justify-between gap-4 p-4 text-sm">
+            <span className="text-destructive">{error}</span>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -123,72 +169,105 @@ const Customers = () => {
                   <TableHead>Cliente</TableHead>
                   <TableHead>Plano</TableHead>
                   <TableHead>Valor mensal</TableHead>
-                  <TableHead>Contratação</TableHead>
-                  <TableHead>Próximo pgto</TableHead>
+                  <TableHead>Cadastro</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtrados.map((c) => (
-                  <TableRow
-                    key={c.id}
-                    className="cursor-pointer"
-                    onClick={() => navigate(`/admin/clientes/${c.id}`)}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback
-                            className="text-xs font-semibold"
-                            style={{ background: `hsl(${c.avatarCor} / 0.15)`, color: `hsl(${c.avatarCor})` }}
-                          >
-                            {c.nome.split(" ").map((n) => n[0]).slice(0, 2).join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="font-medium leading-tight">{c.nome}</p>
-                          <p className="truncate text-xs text-muted-foreground">{c.empresa}</p>
+                {filtrados.map((c) => {
+                  const banido = c.status === "banido";
+                  const podeAgir = !c.isAdmin;
+                  return (
+                    <TableRow
+                      key={c.userId}
+                      className={c.clientId ? "cursor-pointer" : ""}
+                      onClick={() => c.clientId && navigate(`/admin/clientes/${c.clientId}`)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback
+                              className="text-xs font-semibold"
+                              style={{ background: `hsl(${c.avatarCor} / 0.15)`, color: `hsl(${c.avatarCor})` }}
+                            >
+                              {c.nome.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-1.5 font-medium leading-tight">
+                              {c.nome}
+                              {c.isAdmin && (
+                                <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary">
+                                  Admin
+                                </span>
+                              )}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">{c.email}</p>
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{c.plano}</TableCell>
-                    <TableCell className="font-medium">{fmtBRL(c.valorMensalCents)}</TableCell>
-                    <TableCell className="text-muted-foreground">{fmtData(c.contratacao)}</TableCell>
-                    <TableCell className="text-muted-foreground">{fmtData(c.proximoPagamento)}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={c.status} />
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Ações</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => navigate(`/admin/clientes/${c.id}`)}>
-                            <Eye className="mr-2 h-4 w-4" /> Ver detalhes
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => abrirEdicao(c)}>
-                            <Pencil className="mr-2 h-4 w-4" /> Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setRemovendo(c)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Remover
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      </TableCell>
+                      <TableCell>{c.plano || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell className="font-medium">
+                        {c.valorMensalCents ? fmtBRL(c.valorMensalCents) : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{fmtData(c.contratacao)}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={c.status} />
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">Ações</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {c.clientId && (
+                              <DropdownMenuItem onClick={() => navigate(`/admin/clientes/${c.clientId}`)}>
+                                <Eye className="mr-2 h-4 w-4" /> Ver detalhes
+                              </DropdownMenuItem>
+                            )}
+                            {podeAgir ? (
+                              <>
+                                {banido ? (
+                                  <DropdownMenuItem onClick={() => setAcao({ tipo: "desbanir", user: c })}>
+                                    <ShieldCheck className="mr-2 h-4 w-4" /> Desbanir
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => setAcao({ tipo: "banir", user: c })}>
+                                    <Ban className="mr-2 h-4 w-4" /> Banir
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setAcao({ tipo: "remover", user: c })}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" /> Remover conta
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <DropdownMenuItem disabled>Conta de administrador</DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {loading && filtrados.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                     </TableCell>
                   </TableRow>
-                ))}
-                {filtrados.length === 0 && (
+                )}
+                {!loading && filtrados.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                      Nenhum cliente encontrado.
+                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                      Nenhum usuário encontrado.
                     </TableCell>
                   </TableRow>
                 )}
@@ -198,26 +277,23 @@ const Customers = () => {
         </CardContent>
       </Card>
 
-      <ClienteFormDialog open={formOpen} onOpenChange={setFormOpen} cliente={editando} />
-
-      <AlertDialog open={!!removendo} onOpenChange={(v) => !v && setRemovendo(null)}>
+      <AlertDialog open={!!acao} onOpenChange={(v) => !v && !processando && setAcao(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover cliente?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {removendo && `Tem certeza que deseja remover "${removendo.nome}"? Esta ação não pode ser desfeita.`}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{txt.titulo}</AlertDialogTitle>
+            <AlertDialogDescription>{txt.desc}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={processando}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (removendo) clientesStore.remove(removendo.id);
-                setRemovendo(null);
+              className={txt.destrutivo ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              disabled={processando}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmarAcao();
               }}
             >
-              Remover
+              {processando ? <Loader2 className="h-4 w-4 animate-spin" /> : txt.botao}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -9,11 +9,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { clientes, sites, projetos } from "@/lib/mock-data";
+import { sites, projetos } from "@/lib/mock-data";
+import { useClientes } from "@/lib/clientes-store";
 
 export const GlobalSearch = () => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const clientes = useClientes();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {

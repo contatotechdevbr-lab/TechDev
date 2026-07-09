@@ -1,19 +1,19 @@
-import * as XLSX from "xlsx";
 import {
   clientes as clientesSeed,
   sites,
-  assinaturas,
-  pagamentos,
   fmtData,
-  clienteById,
 } from "./mock-data";
 import { clientesStore } from "./clientes-store";
+import { financasStore, clienteInfoByUserId, receitaPagaCents, mrrCents } from "./financas-store";
 
 const reais = (cents: number) => Number((cents / 100).toFixed(2));
 
 // Gera o arquivo Excel (.xlsx) com 5 abas: Clientes, Faturamento, Assinaturas, Sites e Relatórios.
-export const exportarOperacoes = () => {
+// A lib `xlsx` (~500KB) é carregada sob demanda, só quando a exportação é acionada.
+export const exportarOperacoes = async () => {
+  const XLSX = await import("xlsx");
   const clientes = clientesStore.getSnapshot() ?? clientesSeed;
+  const { pagamentos, assinaturas } = financasStore.getSnapshot();
 
   const abaClientes = clientes.map((c) => ({
     Nome: c.nome,
@@ -28,8 +28,8 @@ export const exportarOperacoes = () => {
   }));
 
   const abaFaturamento = pagamentos.map((p) => ({
-    Cliente: clienteById(p.clienteId)?.nome ?? "—",
-    Empresa: clienteById(p.clienteId)?.empresa ?? "—",
+    Cliente: clienteInfoByUserId(p.clienteId)?.full_name ?? "—",
+    Empresa: clienteInfoByUserId(p.clienteId)?.company ?? "—",
     Plano: p.plano,
     "Valor (R$)": reais(p.valorCents),
     "Data pagamento": fmtData(p.data),
@@ -38,8 +38,8 @@ export const exportarOperacoes = () => {
   }));
 
   const abaAssinaturas = assinaturas.map((a) => ({
-    Cliente: clienteById(a.clienteId)?.nome ?? "—",
-    Empresa: clienteById(a.clienteId)?.empresa ?? "—",
+    Cliente: clienteInfoByUserId(a.clienteId)?.full_name ?? "—",
+    Empresa: clienteInfoByUserId(a.clienteId)?.company ?? "—",
     Plano: a.plano,
     "Valor (R$)": reais(a.valorCents),
     "Ciclo (meses)": a.cicloMeses,
@@ -59,8 +59,8 @@ export const exportarOperacoes = () => {
     Link: s.link,
   }));
 
-  const receitaTotal = reais(pagamentos.filter((p) => p.status === "pago").reduce((a, p) => a + p.valorCents, 0));
-  const mrr = reais(assinaturas.filter((a) => a.status === "ativa").reduce((a, s) => a + s.valorCents, 0));
+  const receitaTotal = reais(receitaPagaCents(pagamentos));
+  const mrr = reais(mrrCents(assinaturas));
   const abaRelatorios = [
     { Indicador: "Total de clientes", Valor: clientes.length },
     { Indicador: "Clientes ativos", Valor: clientes.filter((c) => c.status === "ativo").length },

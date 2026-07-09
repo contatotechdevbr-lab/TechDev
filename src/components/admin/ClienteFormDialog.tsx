@@ -56,30 +56,39 @@ export const ClienteFormDialog = ({ open, onOpenChange, cliente }: Props) => {
     }
   }, [cliente, open]);
 
-  const salvar = () => {
+  const [salvando, setSalvando] = useState(false);
+
+  const salvar = async () => {
     if (!form.nome.trim() || !form.email.trim()) {
       toast({ title: "Preencha nome e email", variant: "destructive" });
       return;
     }
     const valorMensalCents = planos.find((p) => p.nome === form.plano)?.valor ?? 49900;
-    if (cliente) {
-      clientesStore.update(cliente.id, { ...form, valorMensalCents });
-      toast({ title: "Cliente atualizado" });
-    } else {
-      const hoje = new Date().toISOString().slice(0, 10);
-      const prox = new Date();
-      prox.setMonth(prox.getMonth() + 1);
-      clientesStore.add({
-        ...form,
-        valorMensalCents,
-        contratacao: hoje,
-        proximoPagamento: prox.toISOString().slice(0, 10),
-        siteId: null,
-        avatarCor: "205 85% 55%",
-      });
-      toast({ title: "Cliente adicionado" });
+    setSalvando(true);
+    try {
+      if (cliente) {
+        await clientesStore.update(cliente.id, { ...form, valorMensalCents });
+        toast({ title: "Cliente atualizado" });
+      } else {
+        const hoje = new Date().toISOString().slice(0, 10);
+        const prox = new Date();
+        prox.setMonth(prox.getMonth() + 1);
+        await clientesStore.add({
+          ...form,
+          valorMensalCents,
+          contratacao: hoje,
+          proximoPagamento: prox.toISOString().slice(0, 10),
+          siteId: null,
+          avatarCor: "205 85% 55%",
+        });
+        toast({ title: "Cliente adicionado" });
+      }
+      onOpenChange(false);
+    } catch {
+      toast({ title: "Erro ao salvar cliente", description: "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSalvando(false);
     }
-    onOpenChange(false);
   };
 
   return (
@@ -143,10 +152,12 @@ export const ClienteFormDialog = ({ open, onOpenChange, cliente }: Props) => {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={salvando}>
             Cancelar
           </Button>
-          <Button onClick={salvar}>{cliente ? "Salvar alterações" : "Adicionar"}</Button>
+          <Button onClick={salvar} disabled={salvando}>
+            {salvando ? "Salvando..." : cliente ? "Salvar alterações" : "Adicionar"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

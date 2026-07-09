@@ -2,6 +2,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "node:crypto";
 import { createPaymentClient } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import {
+  reconcilePayment,
+  reconcilePreapproval,
+  reconcileInstallmentByExternalRef,
+  type PaymentRow,
+} from "../_lib/reconcile.js";
 
 /**
  * Webhook de notificações do Mercado Pago.
@@ -15,27 +21,6 @@ import { supabaseAdmin } from "../_lib/supabase-admin.js";
  *    confiando apenas no corpo recebido.
  *  - Responde 200 rapidamente para evitar reenvios desnecessários.
  */
-
-// Mapeia o status do Mercado Pago para o enum payment_status do banco
-function mapPaymentStatus(mpStatus: string): string {
-  switch (mpStatus) {
-    case "approved":
-      return "paid";
-    case "authorized":
-    case "in_process":
-    case "pending":
-      return "pending";
-    case "rejected":
-      return "failed";
-    case "refunded":
-    case "charged_back":
-      return "refunded";
-    case "cancelled":
-      return "canceled";
-    default:
-      return "pending";
-  }
-}
 
 /** Valida a assinatura x-signature conforme a documentação do Mercado Pago. */
 function isValidSignature(req: VercelRequest, dataId: string): boolean {
@@ -85,8 +70,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const topic: string = String(queryTopic ?? body.type ?? body.topic ?? "");
     const dataId: string = String(queryDataId ?? body.data?.id ?? body.resource ?? "");
 
-    // Só tratamos notificações de pagamento
-    if (!dataId || (topic && !topic.includes("payment"))) {
+    // Aceitamos dois grupos de eventos:
+    //  - pagamento (Orders API / à vista): topic contém "payment"
+    //  - assinatura recorrente: topic "subscription_preapproval",
+    //    "subscription_authorized_payment" (contém "subscription" ou "preapproval").
+    const isSubscriptionEvent = topic.includes("preapproval") || topic.includes("subscription");
+    const isPaymentEvent = topic.includes("payment") && !isSubscriptionEvent;
+
+    if (!dataId || (topic && !isPaymentEvent && !isSubscriptionEvent)) {
       return res.status(200).json({ received: true, ignored: true });
     }
 
@@ -94,6 +85,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!isValidSignature(req, dataId)) {
       console.log("[v0] Assinatura do webhook inválida.");
       return res.status(401).json({ error: "Assinatura inválida." });
+    }
+
+    // ---- Evento de assinatura recorrente (preapproval) ----
+    if (isSubscriptionEvent) {
+      const eventId = `sub:${topic}:${dataId}`;
+      const { error: dupErr } = await supabaseAdmin
+        .from("webhook_events")
+        .insert({ id: eventId, topic, resource_id: dataId, payload: body });
+      if (dupErr?.code === "23505") {
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+
+      // Para "subscription_authorized_payment", o data.id é o pagamento; o
+      // preapproval_id vem no corpo. Priorizamos o preapproval_id quando existe.
+      const preapprovalId = String(
+        body?.data?.preapproval_id ?? body?.preapproval_id ?? (topic.includes("preapproval") ? dataId : ""),
+      );
+      if (!preapprovalId) {
+        return res.status(200).json({ received: true, skipped: "sem preapproval_id" });
+      }
+
+      const subStatus = await reconcilePreapproval(preapprovalId);
+      await supabaseAdmin.from("webhook_events").update({ status: subStatus }).eq("id", eventId);
+      return res.status(200).json({ received: true, subscription: subStatus });
     }
 
     // Idempotência: tenta registrar este evento; se já existe, ignora
@@ -110,62 +125,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log("[v0] Erro ao registrar webhook_event:", dupError.message);
     }
 
-    // Consulta o status REAL do pagamento na API do Mercado Pago
+    // Consulta o pagamento na API do Mercado Pago para obter o external_reference.
+    // A notificação traz o ID NUMÉRICO do pagamento; o external_reference (UUID)
+    // é o que casa de forma confiável com o registro em `payments`.
     const paymentClient = createPaymentClient();
     const payment = (await paymentClient.get({ id: dataId })) as Record<string, any>;
-    const mpStatus: string = payment?.status ?? "pending";
-    const newStatus = mapPaymentStatus(mpStatus);
+    const externalReference = String(payment?.external_reference ?? "");
 
-    // Atualiza o pagamento no banco (casa por mp_payment_id ou mp_order_id)
-    const orderId = String(payment?.order?.id ?? "");
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from("payments")
-      .update({
-        status: newStatus,
-        mp_payment_id: String(dataId),
-        paid_at: newStatus === "paid" ? new Date().toISOString() : null,
-      })
-      .or(`mp_payment_id.eq.${dataId}${orderId ? `,mp_order_id.eq.${orderId}` : ""}`)
-      .select("id, user_id, plan_id")
-      .maybeSingle();
-
-    if (updateError) {
-      console.log("[v0] Erro ao atualizar pagamento:", updateError.message);
-    }
-
-    // Atualiza o status registrado no evento
-    await supabaseAdmin.from("webhook_events").update({ status: newStatus }).eq("id", eventId);
-
-    // Se aprovado, ativa/atualiza a assinatura do cliente
-    if (newStatus === "paid" && updated?.user_id && updated?.plan_id) {
-      const periodEnd = new Date();
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-      const { data: existingSub } = await supabaseAdmin
-        .from("subscriptions")
-        .select("id")
-        .eq("user_id", updated.user_id)
+    // Localiza o registro do pagamento: primeiro por external_reference,
+    // com fallback para o ID numérico já gravado (mp_payment_id).
+    let row: PaymentRow | null = null;
+    if (externalReference) {
+      const { data } = await supabaseAdmin
+        .from("payments")
+        .select("id, user_id, plan_id, status, mp_order_id, payer_email")
+        .eq("mp_external_reference", externalReference)
         .maybeSingle();
-
-      if (existingSub) {
-        await supabaseAdmin
-          .from("subscriptions")
-          .update({
-            plan_id: updated.plan_id,
-            status: "active",
-            current_period_end: periodEnd.toISOString(),
-            canceled_at: null,
-          })
-          .eq("id", existingSub.id);
-      } else {
-        await supabaseAdmin.from("subscriptions").insert({
-          user_id: updated.user_id,
-          plan_id: updated.plan_id,
-          status: "active",
-          current_period_end: periodEnd.toISOString(),
-        });
-      }
+      row = (data as PaymentRow) ?? null;
     }
+    if (!row) {
+      const { data } = await supabaseAdmin
+        .from("payments")
+        .select("id, user_id, plan_id, status, mp_order_id, payer_email")
+        .eq("mp_payment_id", String(dataId))
+        .maybeSingle();
+      row = (data as PaymentRow) ?? null;
+    }
+
+    if (!row) {
+      // Pode ser uma cobrança avulsa (site_installments) em vez de assinatura.
+      if (externalReference) {
+        const instStatus = await reconcileInstallmentByExternalRef(externalReference);
+        if (instStatus) {
+          await supabaseAdmin
+            .from("webhook_events")
+            .update({ status: `installment:${instStatus}` })
+            .eq("id", eventId);
+          return res.status(200).json({ received: true, installment: instStatus });
+        }
+      }
+      console.log("[v0] webhook: pagamento não encontrado para", dataId, externalReference);
+      await supabaseAdmin.from("webhook_events").update({ status: "not_found" }).eq("id", eventId);
+      return res.status(200).json({ received: true, matched: false });
+    }
+
+    // Reconcilia pela Orders API (fonte da verdade) usando o mp_order_id do registro.
+    const newStatus = await reconcilePayment(row);
+    await supabaseAdmin.from("webhook_events").update({ status: newStatus }).eq("id", eventId);
 
     return res.status(200).json({ received: true, status: newStatus });
   } catch (err: any) {

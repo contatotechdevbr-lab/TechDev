@@ -1,0 +1,28 @@
+# Monitoramento continuo de dependencias vulneraveis.
+# Requer que "Dependabot alerts" e "security updates" estejam habilitados em
+# Settings > Code security do repositorio (passo manual no GitHub).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    # Agrupa atualizacoes de patch/minor para reduzir ruido de PRs.
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+      - "security"
+
+  # Mantem as versoes das GitHub Actions atualizadas (caso workflows sejam adicionados).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
