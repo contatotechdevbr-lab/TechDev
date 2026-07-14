@@ -2,8 +2,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Projeto Supabase REAL (o mesmo validado pelo backend em api/_lib/supabase-admin.ts).
+// A URL e a chave PUBLICÁVEL são seguras para o cliente (a segurança real vem do
+// RLS no banco). Fixamos como fallback porque a integração Supabase da Vercel pode
+// injetar as variáveis VITE_ apontando para OUTRO projeto (vazio) — o que faria o
+// token do usuário não bater com o backend e quebraria login/pagamento.
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || "https://htqxxfgvhowdepzccbqn.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  "sb_publishable_qkRyq-d_VHfo1eMsGEOelA_TYjKK15w";
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
