@@ -18,7 +18,7 @@
     "yaml": "^2.8.2"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.10.0",
+    "@hookform/resolvers": "^5.4.0",
     "@lovable.dev/cloud-auth-js": "^1.1.2",
     "@mercadopago/sdk-js": "^0.0.3",
     "@radix-ui/react-accordion": "^1.2.11",
