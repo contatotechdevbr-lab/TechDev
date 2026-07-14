@@ -20,18 +20,21 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { StatCard } from "@/components/admin/StatCard";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import {
-  clientes,
   sites,
-  assinaturas,
-  pagamentos,
-  faturamentoMensal,
   crescimentoClientes,
-  distribuicaoPlanos,
   statusProjetos,
   fmtBRL,
   fmtData,
-  clienteById,
 } from "@/lib/mock-data";
+import { useClientes } from "@/lib/clientes-store";
+import {
+  useFinancas,
+  clienteInfoByUserId,
+  faturamentoPorMes,
+  distribuicaoPorPlano,
+  receitaPagaCents,
+  mrrCents,
+} from "@/lib/financas-store";
 
 const chartTooltip = {
   contentStyle: {
@@ -57,8 +60,12 @@ const EmptyChart = ({ height = 280 }: { height?: number }) => (
 );
 
 const Overview = () => {
-  const faturamentoTotal = pagamentos.filter((p) => p.status === "pago").reduce((a, p) => a + p.valorCents, 0);
-  const mrr = assinaturas.filter((a) => a.status === "ativa").reduce((a, s) => a + s.valorCents, 0);
+  const clientes = useClientes();
+  const { pagamentos, assinaturas } = useFinancas();
+  const faturamentoTotal = receitaPagaCents(pagamentos);
+  const mrr = mrrCents(assinaturas);
+  const faturamentoMensal = faturamentoPorMes(pagamentos, 6);
+  const distribuicaoPlanos = distribuicaoPorPlano(assinaturas);
   const clientesAtivos = clientes.filter((c) => c.status === "ativo").length;
   const sitesPublicados = sites.filter((s) => s.status === "ativo").length;
   const assinaturasAtivas = assinaturas.filter((a) => a.status === "ativa").length;
@@ -233,11 +240,11 @@ const Overview = () => {
               ))
             )}
             {pagamentos.filter((p) => p.status !== "pago").map((p) => {
-              const c = clienteById(p.clienteId);
+              const c = clienteInfoByUserId(p.clienteId);
               return (
                 <div key={p.id} className="flex items-center justify-between py-2.5 last:pb-0">
                   <div>
-                    <p className="text-sm font-medium">{c?.empresa}</p>
+                    <p className="text-sm font-medium">{c?.company ?? c?.full_name ?? "Cliente"}</p>
                     <p className="text-xs text-muted-foreground">{p.plano} · {fmtData(p.data)}</p>
                   </div>
                   <StatusBadge status={p.status} />

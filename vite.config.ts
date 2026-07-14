@@ -16,4 +16,20 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // Separa dependências grandes em chunks próprios para melhorar o cache do
+    // navegador entre deploys e evitar um único bundle gigante.
+    rollupOptions: {
+      output: {
+        // Só isolamos react/roteador (usados em toda a app). recharts NÃO entra
+        // aqui de propósito: forçar um chunk manual faria o Vite pré-carregá-lo
+        // (modulepreload) na home. Deixando o Vite decidir, ele fica apenas nos
+        // chunks das rotas admin (lazy), fora do carregamento inicial.
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 900,
+  },
 }));

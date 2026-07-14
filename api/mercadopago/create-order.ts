@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { randomUUID } from "node:crypto";
 import { createOrderViaApi, isSandbox } from "../_lib/mercadopago.js";
 import { supabaseAdmin } from "../_lib/supabase-admin.js";
+import { getAuthedUser } from "../_lib/require-auth.js";
+import { rateLimit } from "../_lib/rate-limit.js";
 
 /**
  * Cria uma Order no Mercado Pago (Checkout Transparente / Orders API).
@@ -19,10 +21,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Método não permitido." });
   }
 
+  // Rate limiting: mitiga abuso/DoS na criação de pagamentos.
+  if (rateLimit(req, res, { key: "create-order", limit: 15, windowMs: 60_000 })) return;
+
   try {
+    // Autenticação obrigatória: o usuário é derivado do token (nunca do corpo),
+    // evitando IDOR (um usuário criar pagamento em nome de outro).
+    const authedUser = await getAuthedUser(req);
+    if (!authedUser) {
+      return res.status(401).json({ error: "Autenticação necessária." });
+    }
+    const userId = authedUser.id;
+
     const {
       planId,
-      userId,
       method, // "pix" | "card"
       payer,
       card, // { token, installments, paymentMethodId } quando method === "card"
@@ -37,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1) Busca o plano no banco para obter o valor REAL (nunca confiar no cliente)
     const { data: plan, error: planError } = await supabaseAdmin
       .from("plans")
-      .select("id, name, price_cents")
+      .select("id, name, price_cents, discount_annual_pct, allow_upfront")
       .eq("id", planId)
       .eq("active", true)
       .maybeSingle();
@@ -45,8 +57,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (planError || !plan) {
       return res.status(404).json({ error: "Plano não encontrado ou inativo." });
     }
+    if (plan.allow_upfront === false) {
+      return res.status(400).json({ error: "Este plano não aceita pagamento à vista." });
+    }
 
-    const amount = (plan.price_cents / 100).toFixed(2);
+    // À VISTA: pagamento único referente aos 12 meses, com desconto do plano.
+    // total = mensal × 12 × (1 − desconto%). Sempre calculado no servidor.
+    const discountPct = Number(plan.discount_annual_pct ?? 20);
+    const amountCents = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
+    const amount = (amountCents / 100).toFixed(2);
     const externalReference = randomUUID();
 
     // 1.1) Busca a data REAL de cadastro do usuário (nunca usar valor fictício).
@@ -110,6 +129,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3) Cria a Order no Mercado Pago (com chave de idempotência)
+    // OBS: a Orders API (/v1/orders) NÃO aceita o campo "notification_url" no corpo
+    // (retorna 400 "unsupported_properties"). A URL de webhook deve ser configurada
+    // no painel do Mercado Pago (Suas integrações > Webhooks). A confirmação do
+    // pagamento é garantida de qualquer forma pela reconciliação via Orders API
+    // (endpoint payment-status + polling no checkout e no painel do cliente).
     const orderBody = {
       type: "online" as const,
       total_amount: amount,
@@ -182,13 +206,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { error: insertError } = await supabaseAdmin.from("payments").insert({
       user_id: userId ?? null,
       plan_id: plan.id,
-      amount_cents: plan.price_cents,
+      amount_cents: amountCents,
       installments: method === "card" ? card?.installments ?? 1 : 1,
       status: "pending",
       payment_method: method,
+      billing_type: "upfront",
       payer_email: payer.email,
       mp_order_id: String(orderAny?.id ?? ""),
       mp_payment_id: payment?.id ? String(payment.id) : null,
+      mp_external_reference: externalReference,
     });
 
     if (insertError) {

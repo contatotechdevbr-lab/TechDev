@@ -6,10 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Check, Loader2, ShieldCheck, QrCode, CreditCard, Copy } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { tokenizeCard, isMercadoPagoConfigured, getDeviceId, preloadMercadoPago } from "@/lib/mercadopago";
+import { apiFetch } from "@/lib/api-client";
 
 export type CheckoutPlan = {
   id: string;
@@ -19,22 +19,37 @@ export type CheckoutPlan = {
   max_installments: number;
   description?: string;
   is_popular?: boolean;
+  discount_annual_pct?: number;
+  allow_recurring?: boolean;
+  allow_upfront?: boolean;
 };
+
+/** Modo de cobrança escolhido na seção de planos. */
+export type BillingMode = "upfront" | "recurring";
 
 type Props = {
   plan: CheckoutPlan | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** "upfront" = 12 meses à vista (PIX/cartão). "recurring" = recorrência mensal (só cartão). */
+  billingMode?: BillingMode;
 };
 
 type PixData = { qrCode?: string; qrCodeBase64?: string; ticketUrl?: string };
 
-export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
+export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "recurring" }: Props) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [method, setMethod] = useState<"pix" | "card">("pix");
+  const isRecurring = billingMode === "recurring";
+  // Na recorrência só existe cartão. À vista permite PIX (padrão) ou cartão.
+  const [method, setMethod] = useState<"pix" | "card">(isRecurring ? "card" : "pix");
   const [loading, setLoading] = useState(false);
   const [pix, setPix] = useState<PixData | null>(null);
+
+  // Mantém o método coerente com o modo ao abrir/alternar (recorrência = só cartão).
+  useEffect(() => {
+    setMethod(isRecurring ? "card" : "pix");
+  }, [isRecurring, open]);
 
   // Dados do pagador / cartão
   const [cpf, setCpf] = useState("");
@@ -63,19 +78,26 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   }, [open]);
 
   // Ao abrir, pré-preenche CPF e endereço com os dados já salvos no perfil.
+  // O CPF é descriptografado no servidor (rota autenticada), nunca lido em
+  // texto puro direto do banco.
   useEffect(() => {
     if (!open || !user) return;
     void (async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("cpf, address_city, address_state, address_zip_code")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (data) {
+      try {
+        const res = await apiFetch("/api/profile/billing", { method: "GET" });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          cpf?: string;
+          addressCity?: string;
+          addressState?: string;
+          addressZipCode?: string;
+        };
         if (data.cpf) setCpf((prev) => prev || data.cpf!);
-        if (data.address_city) setCity((prev) => prev || data.address_city!);
-        if (data.address_state) setUf((prev) => prev || data.address_state!);
-        if (data.address_zip_code) setZipCode((prev) => prev || data.address_zip_code!);
+        if (data.addressCity) setCity((prev) => prev || data.addressCity!);
+        if (data.addressState) setUf((prev) => prev || data.addressState!);
+        if (data.addressZipCode) setZipCode((prev) => prev || data.addressZipCode!);
+      } catch {
+        /* silencioso: prefill é conveniência */
       }
     })();
   }, [open, user]);
@@ -114,7 +136,15 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   if (!plan) return null;
 
   const fmt = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const total = plan.price_cents;
+
+  // Valores conforme o modo de cobrança:
+  //  - recorrência: cobra o valor MENSAL (12x automáticas no cartão).
+  //  - à vista: cobra os 12 meses de uma vez, com desconto do plano.
+  const discountPct = plan.discount_annual_pct ?? 20;
+  const monthly = plan.price_cents;
+  const upfrontTotal = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
+  const total = isRecurring ? monthly : upfrontTotal;
+  const savings = plan.price_cents * 12 - upfrontTotal;
 
   const resetState = () => {
     setPix(null);
@@ -136,8 +166,52 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
   const handleConfirm = async () => {
     if (!user) {
       onOpenChange(false);
-      navigate(`/auth?plan=${plan.id}`);
+      navigate(`/auth?plan=${plan.id}&mode=${billingMode}`);
       return;
+    }
+
+    // ---- Fluxo RECORRENTE (parcelado): assinatura via Mercado Pago ----
+    // O cartão é informado na página segura do Mercado Pago (init_point), por
+    // isso aqui não coletamos cartão nem endereço — apenas redirecionamos.
+    if (isRecurring) {
+      setLoading(true);
+      try {
+        const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");
+        const res = await apiFetch("/api/mercadopago/create-preapproval", {
+          method: "POST",
+          body: JSON.stringify({
+            planId: plan.id,
+            payer: { email: user.email, firstName, lastName: rest.join(" ") || "TechDev" },
+          }),
+        });
+
+        // Se a resposta não for JSON, o backend de pagamento não está disponível
+        // (ex.: pré-visualização de desenvolvimento). As funções /api só rodam no
+        // site publicado (www.techdev.website).
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            "O pagamento só funciona no site publicado (www.techdev.website), não na pré-visualização.",
+          );
+        }
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.detail ?? data?.error ?? "Falha ao criar a assinatura.");
+        }
+        if (!data.initPoint) throw new Error("Não foi possível iniciar a autorização do cartão.");
+        toast({
+          title: "Redirecionando…",
+          description: "Você autorizará o cartão com segurança no Mercado Pago.",
+        });
+        // Redireciona para a página de autorização da assinatura recorrente.
+        window.location.href = data.initPoint;
+        return;
+      } catch (e: any) {
+        toast({ title: "Erro na assinatura", description: e.message, variant: "destructive" });
+        setLoading(false);
+        return;
+      }
     }
 
     if (!cpf.trim()) {
@@ -161,16 +235,17 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
       const ufValue = uf.trim().toUpperCase().slice(0, 2);
       const zipValue = zipCode.replace(/\D/g, "");
 
-      // Salva CPF e endereço no perfil (reutilizados em contratações futuras)
-      await supabase
-        .from("profiles")
-        .update({
+      // Salva CPF (criptografado no servidor) e endereço no perfil, para
+      // reutilização em contratações futuras.
+      await apiFetch("/api/profile/billing", {
+        method: "POST",
+        body: JSON.stringify({
           cpf,
-          address_city: cityValue,
-          address_state: ufValue,
-          address_zip_code: zipValue,
-        })
-        .eq("id", user.id);
+          addressCity: cityValue,
+          addressState: ufValue,
+          addressZipCode: zipValue,
+        }),
+      });
 
       // Monta o payload do pagador
       const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");
@@ -208,12 +283,10 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
       const deviceId = await getDeviceId();
 
       // Chama o backend (Vercel Function) para criar a Order
-      const res = await fetch("/api/mercadopago/create-order", {
+      const res = await apiFetch("/api/mercadopago/create-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planId: plan.id,
-          userId: user.id,
           method,
           payer,
           card: cardPayload,
@@ -221,6 +294,15 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
           address: { city: cityValue, state: ufValue, zipCode: zipValue },
         }),
       });
+
+      // As funções /api só rodam no site publicado; na pré-visualização a
+      // resposta não é JSON. Damos uma mensagem clara nesse caso.
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          "O pagamento só funciona no site publicado (www.techdev.website), não na pré-visualização.",
+        );
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -240,9 +322,29 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
         setPix(data.pix);
         toast({ title: "PIX gerado!", description: "Escaneie o QR Code ou copie o código para pagar." });
       } else {
+        // Cartão: confirma o status real na Orders API antes de redirecionar.
+        // Faz algumas tentativas curtas para dar feedback imediato ao cliente.
+        let confirmed = false;
+        if (data.orderId) {
+          for (let i = 0; i < 4 && !confirmed; i++) {
+            try {
+              const st = await apiFetch("/api/mercadopago/payment-status", {
+                method: "POST",
+                body: JSON.stringify({ orderId: data.orderId }),
+              });
+              const j = await st.json().catch(() => ({}));
+              if (j?.paid) confirmed = true;
+            } catch {
+              /* segue tentando */
+            }
+            if (!confirmed) await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
         toast({
-          title: "Pagamento enviado!",
-          description: "Acompanhe o status da sua assinatura no painel.",
+          title: confirmed ? "Pagamento aprovado!" : "Pagamento enviado!",
+          description: confirmed
+            ? "Sua assinatura já está ativa. Confira no painel."
+            : "Estamos confirmando seu pagamento. Acompanhe no painel.",
         });
         handleClose(false);
         navigate("/dashboard");
@@ -256,12 +358,17 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-md flex-col gap-0 p-0 sm:w-full">
+        <DialogHeader className="border-b border-border px-6 pb-4 pt-6 text-left">
           <DialogTitle>Assinar {plan.name}</DialogTitle>
-          <DialogDescription>Pague com PIX ou cartão de crédito de forma segura.</DialogDescription>
+          <DialogDescription>
+            {isRecurring
+              ? "Recorrência no cartão: 12 cobranças mensais automáticas."
+              : "12 meses à vista com desconto — pague no PIX ou cartão."}
+          </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto px-6 py-4">
         {pix ? (
           /* ---- Tela do PIX gerado ---- */
           <div className="space-y-4 text-center">
@@ -291,11 +398,19 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
           /* ---- Formulário de checkout ---- */
           <div className="space-y-4">
             <div className="rounded-lg border border-border bg-secondary/30 p-4">
-              <div className="flex items-baseline justify-between mb-3">
+              <div className="flex items-baseline justify-between">
                 <span className="font-semibold">{plan.name}</span>
-                <span className="text-2xl font-bold text-primary">{fmt(total)}</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-primary">{fmt(total)}</span>
+                  <span className="text-sm text-muted-foreground">{isRecurring ? "/mês" : " à vista"}</span>
+                </div>
               </div>
-              <ul className="space-y-1.5">
+              <p className="mb-3 mt-0.5 text-right text-xs text-muted-foreground">
+                {isRecurring
+                  ? "12 cobranças mensais automáticas no cartão"
+                  : `12 meses de uma vez • você economiza ${fmt(savings)} (${discountPct}%)`}
+              </p>
+              <ul className="space-y-1.5 border-t border-border pt-3">
                 {plan.features.slice(0, 4).map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
                     <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
@@ -305,6 +420,21 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
               </ul>
             </div>
 
+            {isRecurring && (
+              <div className="rounded-lg border border-border bg-card/60 p-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <CreditCard className="h-4 w-4 text-primary" /> Cartão de crédito (recorrência)
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Ao continuar, você será levado ao ambiente seguro do Mercado Pago para autorizar
+                  o cartão. Depois disso, a cobrança de {fmt(monthly)} é feita automaticamente todo
+                  mês, por 12 meses. O PIX não está disponível nesta opção.
+                </p>
+              </div>
+            )}
+
+            {!isRecurring && (
+            <>
             <div className="space-y-2">
               <Label>Forma de pagamento</Label>
               <RadioGroup value={method} onValueChange={(v) => setMethod(v as "pix" | "card")} className="grid grid-cols-2 gap-2">
@@ -400,25 +530,34 @@ export const CheckoutDialog = ({ plan, open, onOpenChange }: Props) => {
                 </div>
               </div>
             )}
+            </>
+            )}
 
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-primary/5 border border-primary/20 rounded-md p-3">
               <ShieldCheck className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
               <span>
-                Pagamento processado com segurança pelo Mercado Pago. Os dados do seu cartão são
-                tokenizados no navegador e nunca passam pelos nossos servidores.
+                Pagamento processado com segurança pelo Mercado Pago.{" "}
+                {isRecurring
+                  ? "A autorização do cartão acontece no ambiente do Mercado Pago."
+                  : "Os dados do seu cartão são tokenizados no navegador e nunca passam pelos nossos servidores."}
               </span>
             </div>
           </div>
         )}
+        </div>
 
         {!pix && (
-          <DialogFooter>
+          <DialogFooter className="border-t border-border px-6 py-4">
             <Button variant="ghost" onClick={() => handleClose(false)} disabled={loading}>
               Cancelar
             </Button>
             <Button variant="hero" onClick={handleConfirm} disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {user ? `Pagar ${fmt(total)}` : "Entrar para assinar"}
+              {!user
+                ? "Entrar para assinar"
+                : isRecurring
+                ? `Assinar ${fmt(monthly)}/mês`
+                : `Pagar ${fmt(total)}`}
             </Button>
           </DialogFooter>
         )}

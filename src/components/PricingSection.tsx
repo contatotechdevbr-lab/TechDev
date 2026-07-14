@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Check,
@@ -13,55 +14,16 @@ import {
   ShieldAlert,
   MessageCircle,
 } from "lucide-react";
-import { CheckoutDialog, type CheckoutPlan } from "@/components/CheckoutDialog";
+import { CheckoutDialog, type CheckoutPlan, type BillingMode } from "@/components/CheckoutDialog";
+import {
+  CustomProjectCheckoutDialog,
+  type CustomProjectToPay,
+} from "@/components/CustomProjectCheckoutDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { CreditCard, CheckCircle2 } from "lucide-react";
 
 const WHATSAPP_LINK =
-  "https://wa.me/5521987850455?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20um%20or%C3%A7amento%20para%20um%20projeto%20personalizado.";
-
-// Fallback enquanto os planos reais carregam do banco
-const FALLBACK_PLANS: CheckoutPlan[] = [
-  {
-    id: "p1",
-    name: "1 a 5 Profissionais",
-    description: "Ideal para pequenas equipes",
-    price_cents: 10990,
-    features: ["Até 5 profissionais", "Agenda integrada", "Suporte por e-mail", "Hospedagem inclusa"],
-    max_installments: 1,
-    is_popular: false,
-  },
-  {
-    id: "p2",
-    name: "6 a 10 Profissionais",
-    description: "Para equipes em crescimento",
-    price_cents: 16490,
-    features: [
-      "Até 10 profissionais",
-      "Agenda integrada",
-      "Suporte prioritário",
-      "Hospedagem inclusa",
-      "Relatórios avançados",
-    ],
-    max_installments: 1,
-    is_popular: true,
-  },
-  {
-    id: "p3",
-    name: "+10 Profissionais",
-    description: "Para grandes operações",
-    price_cents: 21990,
-    features: [
-      "Profissionais ilimitados",
-      "Agenda integrada",
-      "Suporte 24/7",
-      "Hospedagem inclusa",
-      "Relatórios avançados",
-      "Gerente de conta",
-    ],
-    max_installments: 1,
-    is_popular: false,
-  },
-];
+  "https://wa.me/5521980386279?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20um%20or%C3%A7amento%20para%20um%20projeto%20personalizado.";
 
 const CUSTOM_FEATURES = [
   { icon: Server, label: "Hospedagem Premium" },
@@ -85,37 +47,139 @@ function formatPrice(cents: number) {
 
 type Tab = "assinatura" | "projeto";
 
+type CustomProject = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_cents: number;
+  max_installments: number;
+};
+
 export const PricingSection = () => {
+  // Usamos a sessão já resolvida pelo AuthProvider — NUNCA chamamos
+  // supabase.auth dentro deste componente, evitando o deadlock do lock de token.
+  const { user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState<Tab>("assinatura");
-  const [plans, setPlans] = useState<CheckoutPlan[]>(FALLBACK_PLANS);
+  // Forma de pagamento escolhida por card (independente entre os planos).
+  const [billingModes, setBillingModes] = useState<Record<string, BillingMode>>({});
+  // Sempre carregado do banco. Nunca usamos planos "fantasma" fixos no código.
+  const [plans, setPlans] = useState<CheckoutPlan[]>([]);
   const [selected, setSelected] = useState<CheckoutPlan | null>(null);
+  // Card destacado pelo usuário (seleção visual premium). Permanece até escolher outro.
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  // Projetos personalizados do cliente logado (se houver). Quando existe um
+  // projeto ativo, o card "Projeto Personalizado" vira um card de pagamento.
+  const [myProject, setMyProject] = useState<CustomProject | null>(null);
+  const [projectStatus, setProjectStatus] = useState<string | null>(null);
+  const [payProject, setPayProject] = useState<CustomProjectToPay | null>(null);
+
+  // Flags de carregamento — só renderizamos o conteúdo real depois que os
+  // planos e a verificação de projeto terminam, evitando o "flash" de valores
+  // e a troca de aba ao dar F5.
+  const [plansLoaded, setPlansLoaded] = useState(false);
+  const [projectChecked, setProjectChecked] = useState(false);
+  // A seção aparece assim que os planos do banco carregam. NÃO esperamos a
+  // verificação de projeto (que depende da sessão e pode demorar) — assim as
+  // assinaturas nunca ficam presas no esqueleto para o usuário logado. A aba do
+  // projeto é ativada em segundo plano, quando `loadMyProject` conclui.
+  const ready = plansLoaded;
+  void projectChecked;
+
+  // Padrão: recorrência (parcelamento) sempre aparece primeiro, nunca à vista.
+  const modeFor = (planId: string): BillingMode => billingModes[planId] ?? "recurring";
+
+  const loadMyProject = useCallback(async (uid: string) => {
+    try {
+      const [{ data: proj }, { data: pays }] = await Promise.all([
+        supabase
+          .from("custom_plans")
+          .select("id, name, description, price_cents, max_installments")
+          .eq("user_id", uid)
+          .eq("active", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("payments")
+          .select("status, custom_plan_id")
+          .eq("user_id", uid)
+          .not("custom_plan_id", "is", null),
+      ]);
+      setMyProject((proj as CustomProject) ?? null);
+      if (proj) {
+        const rows = ((pays as any[]) ?? []).filter((p) => p.custom_plan_id === (proj as any).id);
+        const paid = rows.find((p) => p.status === "paid");
+        setProjectStatus(paid ? "paid" : rows.some((p) => p.status === "pending") ? "pending" : null);
+        // Cliente com projeto ativo abre direto na aba do projeto (mesmo lote de
+        // estado que 'ready', evitando qualquer troca visível de aba).
+        setTab("projeto");
+      } else {
+        setProjectStatus(null);
+      }
+    } catch (err) {
+      console.error("[v0] loadMyProject falhou:", err);
+    } finally {
+      // A verificação SEMPRE conclui, mesmo em erro/timeout — nunca trava a tela.
+      setProjectChecked(true);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
     supabase
       .from("plans")
-      .select("id, name, description, price_cents, features, max_installments, is_popular")
+      .select(
+        "id, name, description, price_cents, features, max_installments, is_popular, discount_annual_pct, allow_recurring, allow_upfront",
+      )
       .eq("active", true)
       .order("price_cents", { ascending: true })
-      .then(({ data }) => {
-        if (active && data && data.length > 0) {
-          setPlans(
-            data.map((p) => ({
-              id: p.id,
-              name: p.name,
-              description: p.description ?? "",
-              price_cents: p.price_cents,
-              features: p.features ?? [],
-              max_installments: p.max_installments ?? 1,
-              is_popular: p.is_popular ?? false,
-            })),
-          );
-        }
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) console.error("[v0] carregar planos falhou:", error);
+        // Sempre refletimos exatamente o que está no banco (planos ativos).
+        setPlans(
+          (data ?? []).map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description ?? "",
+            price_cents: p.price_cents,
+            features: p.features ?? [],
+            max_installments: p.max_installments ?? 1,
+            is_popular: p.is_popular ?? false,
+            discount_annual_pct: p.discount_annual_pct ?? 20,
+            allow_recurring: p.allow_recurring ?? true,
+            allow_upfront: p.allow_upfront ?? true,
+          })),
+        );
+        setPlansLoaded(true);
       });
+    // Trava de segurança: se algo demorar demais, libera a renderização em 4s
+    // para nunca deixar o esqueleto preso.
+    const safety = window.setTimeout(() => {
+      if (!active) return;
+      setPlansLoaded(true);
+      setProjectChecked(true);
+    }, 4000);
     return () => {
       active = false;
+      window.clearTimeout(safety);
     };
   }, []);
+
+  // A verificação de projeto usa a sessão já resolvida pelo AuthProvider.
+  // Sem onAuthStateChange e sem getSession aqui: nada readquire o lock de token,
+  // então não há deadlock e a query de planos nunca fica presa no F5.
+  useEffect(() => {
+    if (authLoading) return; // aguarda o auth restaurar a sessão
+    if (!user) {
+      setMyProject(null);
+      setProjectStatus(null);
+      setProjectChecked(true);
+      return;
+    }
+    void loadMyProject(user.id);
+  }, [authLoading, user, loadMyProject]);
 
   return (
     <section id="planos" className="relative py-24 bg-background overflow-hidden">
@@ -132,57 +196,107 @@ export const PricingSection = () => {
           </p>
         </div>
 
-        {/* Toggle */}
-        <div className="flex justify-center mb-3">
-          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 p-1">
-            <button
-              type="button"
-              onClick={() => setTab("projeto")}
-              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
-                tab === "projeto"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Projeto Personalizado
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("assinatura")}
-              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
-                tab === "assinatura"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Assinatura
-            </button>
+        {/* Enquanto os dados carregam, mostramos um esqueleto — evita o "flash"
+            de valores e a troca de aba ao dar F5. */}
+        {!ready && (
+          <div
+            className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto items-stretch"
+            aria-hidden
+          >
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-[30rem] w-full sm:w-[22rem] rounded-2xl border border-border bg-card/40 animate-pulse"
+              />
+            ))}
           </div>
-        </div>
-        <p className="text-center text-sm text-muted-foreground mb-12">
-          {tab === "assinatura"
-            ? "Cobrança recorrente mensal, cancele quando quiser."
-            : "Orçamento sob medida para o seu projeto, sem mensalidade fixa."}
-        </p>
+        )}
+
+        {/* Toggle */}
+        {ready && (
+          <div className="flex justify-center mb-3">
+            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/60 p-1">
+              <button
+                type="button"
+                onClick={() => setTab("projeto")}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                  tab === "projeto"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Projeto Personalizado
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("assinatura")}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                  tab === "assinatura"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Assinatura
+              </button>
+            </div>
+          </div>
+        )}
+        {ready && (
+          <p className="text-center text-sm text-muted-foreground mb-10">
+            {tab === "assinatura"
+              ? "Escolha o plano e, no card, decida como quer pagar."
+              : "Orçamento sob medida para o seu projeto, sem mensalidade fixa."}
+          </p>
+        )}
 
         {/* Aba: Assinatura — 3 cards */}
-        {tab === "assinatura" && (
-          <div className="grid gap-6 md:grid-cols-3 max-w-6xl mx-auto items-stretch">
+        {ready && tab === "assinatura" && (
+          <div className="flex flex-wrap justify-center gap-6 max-w-6xl mx-auto items-stretch">
+            {plans.length === 0 && (
+              <p className="text-center text-muted-foreground py-12">
+                Nenhum plano de assinatura disponível no momento.
+              </p>
+            )}
             {plans.map((plan) => {
               const popular = plan.is_popular;
-              const { reais, centavos } = formatPrice(plan.price_cents);
+              const discountPct = plan.discount_annual_pct ?? 20;
+              const upfrontTotalCents = Math.round(plan.price_cents * 12 * (1 - discountPct / 100));
+              const mode = modeFor(plan.id);
+              const isUpfront = mode === "upfront";
+              // No modo à vista mostramos o TOTAL dos 12 meses; no parcelado, o valor mensal.
+              const { reais, centavos } = formatPrice(isUpfront ? upfrontTotalCents : plan.price_cents);
+              const isHighlighted = highlightedId === plan.id;
+              const anyHighlighted = highlightedId !== null;
               return (
                 <div
                   key={plan.id}
-                  className={`relative flex flex-col rounded-2xl border p-8 animate-fade-in transition-transform hover:-translate-y-1 ${
-                    popular
-                      ? "border-primary bg-card shadow-[0_0_40px_-12px_hsl(var(--primary)/0.5)] md:scale-105"
-                      : "border-border bg-card/60"
-                  }`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isHighlighted}
+                  onClick={() => setHighlightedId(plan.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setHighlightedId(plan.id);
+                    }
+                  }}
+                  className={`relative flex w-full flex-col rounded-2xl border p-8 animate-fade-in cursor-pointer outline-none transition-all duration-300 ease-out focus-visible:ring-2 focus-visible:ring-primary/50 sm:w-[22rem] ${
+                    isHighlighted
+                      ? "z-10 scale-[1.05] -translate-y-2 border-primary bg-card shadow-[0_24px_60px_-15px_hsl(var(--primary)/0.55)] ring-1 ring-primary/40"
+                      : popular
+                        ? "border-primary bg-card shadow-[0_0_40px_-12px_hsl(var(--primary)/0.5)] hover:-translate-y-[3px] hover:scale-[1.02]"
+                        : "border-border bg-card/60 hover:-translate-y-[3px] hover:scale-[1.02] hover:border-primary/60"
+                  } ${anyHighlighted && !isHighlighted ? "!opacity-90" : "!opacity-100"}`}
                 >
-                  {popular && (
+                  {popular && !isHighlighted && (
                     <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground whitespace-nowrap">
                       Mais popular
+                    </span>
+                  )}
+                  {isHighlighted && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-primary px-4 py-1 text-xs font-semibold text-primary-foreground whitespace-nowrap">
+                      <Check className="h-3 w-3" />
+                      Selecionado
                     </span>
                   )}
                   <h3 className="text-center text-base font-medium text-muted-foreground mb-4">
@@ -192,9 +306,53 @@ export const PricingSection = () => {
                     <span className="align-top text-lg font-semibold text-primary">R$ </span>
                     <span className="text-5xl font-bold text-primary">{reais}</span>
                     <span className="text-2xl font-bold text-primary">,{centavos}</span>
-                    <span className="text-sm text-muted-foreground">/mês</span>
+                    <span className="text-sm text-muted-foreground">{isUpfront ? " à vista" : "/mês"}</span>
                   </div>
-                  <p className="text-center text-xs text-muted-foreground mb-2">Cobrança recorrente mensal</p>
+                  <p className="text-center text-xs text-muted-foreground mb-4">
+                    {isUpfront ? (
+                      <>
+                        12 meses de uma vez ·{" "}
+                        <span className="font-semibold text-primary">{discountPct}% de desconto</span>
+                      </>
+                    ) : (
+                      "12x no cartão · cobrança mensal automática"
+                    )}
+                  </p>
+
+                  {/* Seletor de forma de pagamento — discreto, por card */}
+                  <div
+                    role="radiogroup"
+                    aria-label={`Forma de pagamento do plano ${plan.name}`}
+                    className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-border bg-background/50 p-1"
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={!isUpfront}
+                      onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "recurring" }))}
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
+                        !isUpfront
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Recorrência 12x
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={isUpfront}
+                      onClick={() => setBillingModes((prev) => ({ ...prev, [plan.id]: "upfront" }))}
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-all ${
+                        isUpfront
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      À vista · {discountPct}% OFF
+                    </button>
+                  </div>
+
                   <p className="text-center text-sm text-foreground/80 mb-6">{plan.description}</p>
                   <ul className="space-y-3 mb-8 flex-1">
                     {plan.features.map((f) => (
@@ -209,7 +367,7 @@ export const PricingSection = () => {
                     variant={popular ? "default" : "outline"}
                     onClick={() => setSelected(plan)}
                   >
-                    Assinar plano mensal
+                    {isUpfront ? "Assinar à vista" : "Assinar Recorrência"}
                   </Button>
                 </div>
               );
@@ -218,7 +376,7 @@ export const PricingSection = () => {
         )}
 
         {/* Aba: Projeto Personalizado — card largo único */}
-        {tab === "projeto" && (
+        {ready && tab === "projeto" && (
           <div className="max-w-5xl mx-auto animate-fade-in">
             <div className="rounded-2xl border border-primary/40 bg-card overflow-hidden md:grid md:grid-cols-[1.1fr_1fr]">
               {/* Lado esquerdo: destaque */}
@@ -226,17 +384,60 @@ export const PricingSection = () => {
                 <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-4">
                   <Sparkles className="h-3.5 w-3.5" /> Sob medida
                 </span>
-                <h3 className="text-3xl font-bold mb-3 text-balance">Projeto Personalizado</h3>
-                <p className="text-muted-foreground mb-6 text-pretty leading-relaxed">
-                  Tudo o que o seu site precisa para permanecer online, seguro e atualizado —
-                  desenvolvido especialmente para o seu negócio.
-                </p>
-                <p className="text-2xl font-bold text-primary mb-6">Valor sob consulta</p>
-                <Button variant="whatsapp" size="lg" className="w-full sm:w-auto" asChild>
-                  <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
-                    <MessageCircle className="mr-2 h-5 w-5" /> Solicitar Orçamento
-                  </a>
-                </Button>
+                {myProject ? (
+                  <>
+                    <h3 className="text-3xl font-bold mb-3 text-balance">{myProject.name}</h3>
+                    <p className="text-muted-foreground mb-6 text-pretty leading-relaxed">
+                      {myProject.description ??
+                        "Projeto personalizado criado especialmente para você. Efetue o pagamento para dar início."}
+                    </p>
+                    <p className="text-3xl font-bold text-primary mb-1">
+                      R$ {formatPrice(myProject.price_cents).reais},
+                      {formatPrice(myProject.price_cents).centavos}
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      {myProject.max_installments > 1
+                        ? `à vista (PIX/cartão) ou em até ${myProject.max_installments}x no cartão`
+                        : "à vista via PIX ou cartão"}
+                    </p>
+                    {projectStatus === "paid" ? (
+                      <span className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-600">
+                        <CheckCircle2 className="h-4 w-4" /> Projeto pago
+                      </span>
+                    ) : (
+                      <Button
+                        variant="hero"
+                        size="lg"
+                        className="w-full sm:w-auto"
+                        onClick={() =>
+                          setPayProject({
+                            id: myProject.id,
+                            name: myProject.name,
+                            price_cents: myProject.price_cents,
+                            max_installments: myProject.max_installments,
+                          })
+                        }
+                      >
+                        <CreditCard className="mr-2 h-5 w-5" />
+                        {projectStatus === "pending" ? "Concluir pagamento" : "Pagar projeto"}
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-3xl font-bold mb-3 text-balance">Projeto Personalizado</h3>
+                    <p className="text-muted-foreground mb-6 text-pretty leading-relaxed">
+                      Tudo o que o seu site precisa para permanecer online, seguro e atualizado —
+                      desenvolvido especialmente para o seu negócio.
+                    </p>
+                    <p className="text-2xl font-bold text-primary mb-6">Valor sob consulta</p>
+                    <Button variant="whatsapp" size="lg" className="w-full sm:w-auto" asChild>
+                      <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
+                        <MessageCircle className="mr-2 h-5 w-5" /> Solicitar Orçamento
+                      </a>
+                    </Button>
+                  </>
+                )}
               </div>
               {/* Lado direito: recursos */}
               <div className="p-8 md:p-10 bg-card/40">
@@ -261,8 +462,24 @@ export const PricingSection = () => {
       </div>
 
       {selected && (
-        <CheckoutDialog plan={selected} open={!!selected} onOpenChange={(o) => !o && setSelected(null)} />
+        <CheckoutDialog
+          plan={selected}
+          open={!!selected}
+          billingMode={modeFor(selected.id)}
+          onOpenChange={(o) => !o && setSelected(null)}
+        />
       )}
+
+      <CustomProjectCheckoutDialog
+        project={payProject}
+        open={payProject !== null}
+        onOpenChange={(o) => {
+          if (!o) setPayProject(null);
+        }}
+        onPaid={() => {
+          if (user) void loadMyProject(user.id);
+        }}
+      />
     </section>
   );
 };

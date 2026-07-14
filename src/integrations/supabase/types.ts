@@ -19,8 +19,10 @@ export type Database = {
           active: boolean
           base_plan_id: string | null
           created_at: string
+          description: string | null
           id: string
           interval: Database["public"]["Enums"]["plan_interval"]
+          max_installments: number
           name: string
           notes: string | null
           price_cents: number
@@ -31,8 +33,10 @@ export type Database = {
           active?: boolean
           base_plan_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           interval?: Database["public"]["Enums"]["plan_interval"]
+          max_installments?: number
           name: string
           notes?: string | null
           price_cents: number
@@ -43,8 +47,10 @@ export type Database = {
           active?: boolean
           base_plan_id?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           interval?: Database["public"]["Enums"]["plan_interval"]
+          max_installments?: number
           name?: string
           notes?: string | null
           price_cents?: number

@@ -1,12 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, CreditCard, UserPlus, Globe, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { notificacoes as seed, type Notificacao } from "@/lib/mock-data";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
-const iconFor = (tipo: Notificacao["tipo"]) => {
+type TipoNotificacao = "pagamento" | "cliente" | "site" | "sistema";
+
+interface NotificacaoUI {
+  id: string;
+  titulo: string;
+  descricao: string;
+  tempo: string;
+  lida: boolean;
+  tipo: TipoNotificacao;
+}
+
+interface NotificationRow {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  read: boolean;
+  created_at: string;
+}
+
+const iconFor = (tipo: TipoNotificacao) => {
   switch (tipo) {
     case "pagamento":
       return CreditCard;
@@ -19,11 +39,81 @@ const iconFor = (tipo: Notificacao["tipo"]) => {
   }
 };
 
+// Formata a data como tempo relativo (ex.: "há 5 min", "há 2 h", "há 3 d").
+const tempoRelativo = (iso: string): string => {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24);
+  return `há ${d} d`;
+};
+
+const toUI = (r: NotificationRow): NotificacaoUI => ({
+  id: r.id,
+  titulo: r.title,
+  descricao: r.description || "",
+  tempo: tempoRelativo(r.created_at),
+  lida: r.read,
+  tipo: (["pagamento", "cliente", "site", "sistema"].includes(r.type) ? r.type : "sistema") as TipoNotificacao,
+});
+
 export const NotificationsMenu = () => {
-  const [items, setItems] = useState<Notificacao[]>(seed);
+  const [items, setItems] = useState<NotificacaoUI[]>([]);
   const naoLidas = items.filter((n) => !n.lida).length;
 
-  const marcarTodas = () => setItems((prev) => prev.map((n) => ({ ...n, lida: true })));
+  useEffect(() => {
+    let ativo = true;
+
+    const carregar = async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!ativo) return;
+      if (error) {
+        console.error("[v0] erro ao carregar notificações:", error.message);
+        return;
+      }
+      setItems((data as NotificationRow[]).map(toUI));
+    };
+
+    carregar();
+
+    const channel = supabase
+      .channel("notifications-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            setItems((prev) => prev.filter((n) => n.id !== (payload.old as NotificationRow).id));
+          } else {
+            const ui = toUI(payload.new as NotificationRow);
+            setItems((prev) => {
+              const idx = prev.findIndex((n) => n.id === ui.id);
+              if (idx === -1) return [ui, ...prev];
+              return prev.map((n) => (n.id === ui.id ? ui : n));
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      ativo = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const marcarTodas = async () => {
+    setItems((prev) => prev.map((n) => ({ ...n, lida: true })));
+    const { error } = await supabase.from("notifications").update({ read: true }).eq("read", false);
+    if (error) console.error("[v0] erro ao marcar notificações:", error.message);
+  };
 
   return (
     <Popover>
@@ -49,6 +139,11 @@ export const NotificationsMenu = () => {
         </div>
         <ScrollArea className="max-h-80">
           <div className="divide-y divide-border">
+            {items.length === 0 && (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Nenhuma notificação por enquanto.
+              </p>
+            )}
             {items.map((n) => {
               const Icon = iconFor(n.tipo);
               return (

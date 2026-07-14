@@ -20,6 +20,9 @@ type Plan = {
   is_popular: boolean;
   max_installments: number;
   active: boolean;
+  discount_annual_pct: number;
+  allow_recurring: boolean;
+  allow_upfront: boolean;
 };
 
 const empty = {
@@ -31,6 +34,9 @@ const empty = {
   is_popular: false,
   max_installments: 1,
   active: true,
+  discount_annual_pct: 20,
+  allow_recurring: true,
+  allow_upfront: true,
 };
 
 const Plans = () => {
@@ -56,6 +62,9 @@ const Plans = () => {
       is_popular: p.is_popular,
       max_installments: p.max_installments,
       active: p.active,
+      discount_annual_pct: p.discount_annual_pct ?? 20,
+      allow_recurring: p.allow_recurring ?? true,
+      allow_upfront: p.allow_upfront ?? true,
     });
     setOpen(true);
   };
@@ -74,6 +83,9 @@ const Plans = () => {
       is_popular: form.is_popular,
       max_installments: Number(form.max_installments) || 1,
       active: form.active,
+      discount_annual_pct: Math.min(90, Math.max(0, Number(form.discount_annual_pct) || 0)),
+      allow_recurring: form.allow_recurring,
+      allow_upfront: form.allow_upfront,
     };
     const { error } = form.id
       ? await supabase.from("plans").update(payload).eq("id", form.id)
@@ -123,6 +135,12 @@ const Plans = () => {
               <div className="text-2xl font-bold text-primary">{fmt(p.price_cents)}<span className="text-sm text-muted-foreground font-normal">/mês</span></div>
               <p className="text-sm text-muted-foreground line-clamp-2">{p.description}</p>
               <p className="text-xs text-muted-foreground">{p.features.length} recursos • até {p.max_installments}x</p>
+              <div className="flex flex-wrap gap-1.5">
+                {p.allow_upfront !== false && (
+                  <Badge variant="secondary">À vista {p.discount_annual_pct ?? 20}% off</Badge>
+                )}
+                {p.allow_recurring !== false && <Badge variant="secondary">Recorrência 12x</Badge>}
+              </div>
               <div className="flex gap-2 pt-2">
                 <Button size="sm" variant="outline" onClick={() => openEdit(p)}><Pencil className="h-3.5 w-3.5 mr-1" /> Editar</Button>
                 <Button size="sm" variant="ghost" onClick={() => remove(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -144,6 +162,27 @@ const Plans = () => {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Preço (R$/mês)</Label><Input type="number" step="0.01" value={form.price_reais} onChange={(e) => setForm({ ...form, price_reais: e.target.value })} /></div>
               <div><Label>Max. parcelas</Label><Input type="number" min={1} max={12} value={form.max_installments} onChange={(e) => setForm({ ...form, max_installments: Number(e.target.value) })} /></div>
+            </div>
+            <div>
+              <Label>Desconto à vista (% sobre os 12 meses)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={90}
+                value={form.discount_annual_pct}
+                onChange={(e) => setForm({ ...form, discount_annual_pct: Number(e.target.value) })}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Aplicado ao pagamento único de 12 meses (PIX ou cartão).
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="up">Aceita pagamento à vista</Label>
+              <Switch id="up" checked={form.allow_upfront} onCheckedChange={(v) => setForm({ ...form, allow_upfront: v })} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="rec">Aceita recorrência (12x no cartão)</Label>
+              <Switch id="rec" checked={form.allow_recurring} onCheckedChange={(v) => setForm({ ...form, allow_recurring: v })} />
             </div>
             <div>
               <Label>Recursos (um por linha)</Label>
