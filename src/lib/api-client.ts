@@ -1,6 +1,45 @@
 import { supabase } from "@/integrations/supabase/client";
 
 /**
+ * Cache do Access Token mantido pelo listener de autenticação.
+ *
+ * IMPORTANTE: chamar `supabase.auth.getSession()` a cada requisição pode travar
+ * no lock interno de refresh de token do supabase-js (o mesmo deadlock que o
+ * AuthProvider evita). Quando isso acontece, o token não é anexado e o backend
+ * responde 401 "Autenticação necessária" — mesmo com o usuário logado.
+ *
+ * Por isso assinamos `onAuthStateChange` UMA vez e guardamos o token mais
+ * recente. O listener emite `INITIAL_SESSION` (ao restaurar do localStorage),
+ * `SIGNED_IN`, `TOKEN_REFRESHED` e `SIGNED_OUT`, mantendo o cache sempre atual
+ * sem readquirir o lock a cada chamada.
+ */
+let cachedToken: string | null = null;
+supabase.auth.onAuthStateChange((_event, session) => {
+  cachedToken = session?.access_token ?? null;
+});
+
+/**
+ * Resolve o Access Token atual. Prioriza o cache do listener; só recorre ao
+ * `getSession()` como fallback (ex.: primeiríssima chamada antes do
+ * `INITIAL_SESSION`), sempre com timeout para nunca travar a requisição.
+ */
+async function resolveAccessToken(): Promise<string | null> {
+  if (cachedToken) return cachedToken;
+  try {
+    const result = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+    ]);
+    if (result && "data" in result) {
+      cachedToken = result.data.session?.access_token ?? null;
+    }
+  } catch {
+    /* ignora: seguimos sem token e o backend responde 401 tratável */
+  }
+  return cachedToken;
+}
+
+/**
  * Wrapper de fetch para as rotas /api que anexa automaticamente o Access Token
  * da sessão do Supabase no header `Authorization: Bearer <token>`.
  *
@@ -14,8 +53,7 @@ export async function apiFetch(
   init: RequestInit = {},
   timeoutMs = 15000,
 ): Promise<Response> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = await resolveAccessToken();
 
   const headers = new Headers(init.headers ?? {});
   if (!headers.has("Content-Type") && init.body) {
