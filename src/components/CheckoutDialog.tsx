@@ -174,6 +174,25 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "recurr
     // O cartão é informado na página segura do Mercado Pago (init_point), por
     // isso aqui não coletamos cartão nem endereço — apenas redirecionamos.
     if (isRecurring) {
+      // Cooldown entre tentativas: o Mercado Pago recusa por "cc_rejected_high_risk"
+      // (alto risco) quando há várias tentativas consecutivas muito parecidas
+      // (mesmos dados/valor). Conforme orientação do próprio suporte, evitamos
+      // reintentos imediatos: nova tentativa só é permitida após ~90s. Usamos
+      // sessionStorage porque o fluxo redireciona para o MP e volta (a memória
+      // do componente se perde, mas a sessão da aba persiste).
+      const COOLDOWN_MS = 90_000;
+      const lastAttempt = Number(sessionStorage.getItem("mp_preapproval_last_attempt") ?? 0);
+      const elapsed = Date.now() - lastAttempt;
+      if (lastAttempt && elapsed < COOLDOWN_MS) {
+        const wait = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
+        toast({
+          title: "Aguarde antes de tentar de novo",
+          description: `Para evitar recusa por segurança do Mercado Pago, tente novamente em ${wait}s (ou use outro cartão / PIX).`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       setLoading(true);
       try {
         const [firstName, ...rest] = (user.user_metadata?.full_name ?? user.email ?? "Cliente").split(" ");
@@ -200,6 +219,8 @@ export const CheckoutDialog = ({ plan, open, onOpenChange, billingMode = "recurr
           throw new Error(data?.detail ?? data?.error ?? "Falha ao criar a assinatura.");
         }
         if (!data.initPoint) throw new Error("Não foi possível iniciar a autorização do cartão.");
+        // Marca o momento desta tentativa para aplicar o cooldown na próxima.
+        sessionStorage.setItem("mp_preapproval_last_attempt", String(Date.now()));
         toast({
           title: "Redirecionando…",
           description: "Você autorizará o cartão com segurança no Mercado Pago.",
