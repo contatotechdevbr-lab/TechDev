@@ -54,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from("subscriptions")
         .select("id, status, mp_preapproval_id")
         .eq("user_id", authUserId)
-        .in("status", ["active", "pending", "past_due", "paused", "suspended"])
+        .in("status", ["active", "pending", "past_due", "suspended"])
         .order("created_at", { ascending: false })
         .maybeSingle();
 

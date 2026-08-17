@@ -41,7 +41,6 @@ function statusBadge(status: string) {
       return { label: "Pagamento atrasado", className: "border-red-500/30 bg-red-500/15 text-red-600", Icon: XCircle };
     case "canceled":
       return { label: "Cancelada", className: "border-border bg-muted text-muted-foreground", Icon: XCircle };
-    case "paused":
     case "suspended":
       return { label: "Pausada", className: "border-sky-500/30 bg-sky-500/15 text-sky-600", Icon: Clock };
     default:
@@ -63,7 +62,7 @@ export function SubscriptionCard({
 }) {
   const [canceling, setCanceling] = useState(false);
   const b = statusBadge(subscription.status);
-  const isCancelable = ["active", "pending", "past_due", "paused", "suspended"].includes(subscription.status);
+  const isCancelable = ["active", "pending", "past_due", "suspended"].includes(subscription.status);
   const isCanceled = subscription.status === "canceled";
 
   const handleCancel = async () => {
