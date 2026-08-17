@@ -147,10 +147,14 @@ const MeuSite = () => {
 
     try {
     // 0) Assinatura recorrente do usuário (independe de ter site cadastrado).
+    // Só exibimos quando o pagamento já foi FINALIZADO: status "active" ou
+    // estados pós-pagamento ("past_due"/"suspended"). Assinaturas ainda
+    // "pending" (aguardando pagamento) ou já "canceled" não aparecem no painel.
     const { data: subData } = await supabase
       .from("subscriptions")
       .select("id, status, billing_type, current_period_end, canceled_at, plans(name, price_cents)")
       .eq("user_id", user.id)
+      .in("status", ["active", "past_due", "suspended"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
