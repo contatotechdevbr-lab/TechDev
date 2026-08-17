@@ -69,9 +69,9 @@ export function SubscriptionCard({
   const handleCancel = async () => {
     setCanceling(true);
     try {
-      const res = await apiFetch("/api/mercadopago/cancel-subscription", {
+      const res = await apiFetch("/api/mercadopago/payment-status", {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ action: "cancelSubscription" }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Não foi possível cancelar a assinatura.");
