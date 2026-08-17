@@ -8,10 +8,11 @@ import { rateLimit } from "../_lib/rate-limit.js";
 /**
  * Cria uma assinatura RECORRENTE (Preapproval) no Mercado Pago.
  *
- * Fluxo "parcelado (recorrência)": somente cartão de crédito, com 12 cobranças
- * mensais automáticas. Não usa PIX. O cliente é redirecionado ao `init_point`
- * do Mercado Pago para autorizar o cartão; as cobranças mensais são feitas
- * automaticamente pela engine de assinaturas do MP.
+ * Fluxo "recorrência": somente cartão de crédito, com cobranças mensais
+ * automáticas por tempo indeterminado (até o cliente cancelar). Não usa PIX.
+ * O cliente é redirecionado ao `init_point` do Mercado Pago para autorizar o
+ * cartão; as cobranças mensais são feitas automaticamente pela engine de
+ * assinaturas do MP.
  *
  * O valor mensal é SEMPRE lido do plano no banco (nunca confiando no cliente).
  */
@@ -61,10 +62,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "https://www.techdev.website";
     const backUrl = new URL(origin).origin;
 
-    // 12 cobranças mensais => end_date de +12 meses.
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + 12);
-
+    // Assinatura SEM data de término: cobra mensalmente de forma indefinida
+    // (para sempre) até que o cliente cancele. Ao omitir `end_date`, o Mercado
+    // Pago mantém a recorrência ativa continuamente.
     const body = {
       reason: `Assinatura ${plan.name} - TechDev`,
       external_reference: externalReference,
@@ -72,7 +72,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       auto_recurring: {
         frequency: 1,
         frequency_type: "months",
-        end_date: endDate.toISOString(),
         transaction_amount: monthly,
         currency_id: "BRL",
       },

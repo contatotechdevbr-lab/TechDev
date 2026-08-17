@@ -125,8 +125,9 @@ export async function createOrderViaApi(params: {
  * Observações importantes descobertas em testes reais com a API:
  *  - `back_url` precisa ser a raiz do domínio (ex.: https://www.techdev.website);
  *    caminhos com path podem ser recusados como "Invalid value for back_url".
- *  - Use `end_date` no auto_recurring (ex.: +12 meses). O campo `repetitions`
- *    causa erro 500 nesta conta.
+ *  - `end_date` é OPCIONAL: quando omitido, a assinatura cobra mensalmente por
+ *    tempo indeterminado (até o cliente cancelar). O campo `repetitions` causa
+ *    erro 500 nesta conta, então não deve ser usado.
  */
 export async function createPreapprovalViaApi(params: {
   body: unknown;
