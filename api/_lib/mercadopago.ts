@@ -159,6 +159,32 @@ export async function fetchPreapproval(
   return { ok: resp.ok, status: resp.status, data };
 }
 
+/**
+ * Cancela uma assinatura recorrente (Preapproval) no Mercado Pago.
+ *
+ * Faz `PUT /preapproval/{id}` com `status: "cancelled"`. Após o cancelamento,
+ * o Mercado Pago NÃO realiza mais nenhuma cobrança mensal no cartão do cliente.
+ * O cancelamento é definitivo (não é possível reativar o mesmo preapproval —
+ * uma nova assinatura precisa ser criada).
+ */
+export async function cancelPreapprovalViaApi(
+  preapprovalId: string,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const resp = await fetch(`https://api.mercadopago.com/preapproval/${preapprovalId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${getAccessToken()}`,
+      "Content-Type": "application/json",
+      "User-Agent": getSdkUserAgent(),
+      "X-Product-Id": MP_PRODUCT_ID,
+      "X-Tracking-Id": getSdkTrackingId(),
+    },
+    body: JSON.stringify({ status: "cancelled" }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok, status: resp.status, data };
+}
+
 /* ----------------------------------------------------------------
  * Fábricas de clientes de API reutilizáveis (Checkout Transparente).
  * Use `createOrderClient()` para a Orders API (Checkout Transparente).

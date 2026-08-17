@@ -11,6 +11,7 @@ import { PricingSection } from "@/components/PricingSection";
 import { LogoLink } from "@/components/LogoLink";
 import { InstallmentCheckoutDialog, type ChargeToPay } from "@/components/meu-site/InstallmentCheckoutDialog";
 import { NewRequestDialog } from "@/components/meu-site/NewRequestDialog";
+import { SubscriptionCard, type SubscriptionRow } from "@/components/meu-site/SubscriptionCard";
 import { apiFetch } from "@/lib/api-client";
 import {
   LogOut,
@@ -131,6 +132,7 @@ const requestStatusBadge = (status: string) => {
 const MeuSite = () => {
   const { user, isAdmin, signOut, loading: authLoading } = useAuth();
   const [client, setClient] = useState<ClientRow | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [site, setSite] = useState<SiteRow | null>(null);
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [requests, setRequests] = useState<RequestRow[]>([]);
@@ -144,6 +146,30 @@ const MeuSite = () => {
     if (!user) return;
 
     try {
+    // 0) Assinatura recorrente do usuário (independe de ter site cadastrado).
+    const { data: subData } = await supabase
+      .from("subscriptions")
+      .select("id, status, billing_type, current_period_end, canceled_at, plans(name, price_cents)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (subData) {
+      const plan = (subData as any).plans ?? null;
+      setSubscription({
+        id: (subData as any).id,
+        status: (subData as any).status,
+        billing_type: (subData as any).billing_type,
+        current_period_end: (subData as any).current_period_end,
+        canceled_at: (subData as any).canceled_at,
+        plan_name: plan?.name ?? null,
+        plan_price_cents: plan?.price_cents ?? null,
+      });
+    } else {
+      setSubscription(null);
+    }
+
     // 1) Cliente vinculado ao usuário logado (RLS garante que só vê o próprio).
     const { data: clientData, error: clientErr } = await supabase
       .from("clients")
@@ -273,6 +299,10 @@ const MeuSite = () => {
             {syncing ? "Atualizando..." : "Atualizar"}
           </Button>
         </div>
+
+        {!loading && subscription && (
+          <SubscriptionCard subscription={subscription} onChanged={syncAndLoad} />
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground">
